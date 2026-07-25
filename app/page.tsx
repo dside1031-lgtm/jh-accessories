@@ -36,47 +36,47 @@ export default function Home() {
       <section className="px-8 py-16">
 
         <h2 className="text-3xl font-bold mb-10 text-center">
-          熱門商品
-        </h2>
+  熱門商品
+</h2>
 
+<p className="text-center mb-6">
+  商品數量：{products.length}
+</p>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+<div className="grid grid-cols-1 md:grid-cols-4 gap-6">
 
-          {products.map((product) => (
+  {products.map((product) => (
 
-            <div
-              key={product.id}
-              className="border rounded-xl p-6 hover:shadow-lg transition"
-            >
+    <div
+      key={product.id}
+      className="border rounded-xl p-6 hover:shadow-lg transition"
+    >
 
-              <div className="mb-6">
-               <img
-               src={product.image}
-               alt={product.name}
-               className="w-full h-64 object-cover rounded-lg"
-              />
-          </div>
+      <div className="mb-6">
+        <img
+          src={product.image}
+          alt={product.name}
+          className="w-full h-64 object-cover rounded-lg"
+        />
+      </div>
 
+      <h3 className="font-bold text-lg">
+        {product.name}
+      </h3>
 
-              <h3 className="font-bold text-lg">
-                {product.name}
-              </h3>
+      <p className="mt-3 text-gray-600">
+        NT$ {product.price}
+      </p>
 
+      <button className="mt-5 w-full border py-2 rounded-lg">
+        查看商品
+      </button>
 
-              <p className="mt-3 text-gray-600">
-               NT$ {product.price}
-             </p>
+    </div>
 
+  ))}
 
-              <button className="mt-5 w-full border py-2 rounded-lg">
-                查看商品
-              </button>
-
-            </div>
-
-          ))}
-
-        </div>
+</div>
 
       </section>
 

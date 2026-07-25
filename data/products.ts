@@ -19,5 +19,12 @@ export const products = [
     price: 2580,
     image: "/products/bag.jpg",
     description: "商務手提包"
-  }
+  },
+  {
+  id: 4,
+  name: "真皮後背包",
+  price: 3980,
+  image: "/products/backpack.jpg",
+  description: "大容量旅行包"
+}
 ];
