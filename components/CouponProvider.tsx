@@ -7,6 +7,26 @@ import {
   useState,
 } from "react";
 
+import { createClient } from "@supabase/supabase-js";
+
+// =====================================================
+// Supabase Client
+// =====================================================
+
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+const supabaseAnonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+const supabase =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(
+        supabaseUrl,
+        supabaseAnonKey
+      )
+    : null;
+
 // =====================================================
 // 優惠券型別
 // =====================================================
@@ -27,6 +47,8 @@ export type Coupon = {
   value: number;
 
   minAmount: number;
+
+  maxDiscount: number | null;
 
   startDate: string;
 
@@ -69,20 +91,20 @@ type CouponContextType = {
       Coupon,
       "id" | "createdAt" | "usedCount"
     >
-  ) => void;
+  ) => Promise<boolean>;
 
   updateCoupon: (
     id: string,
     updates: Partial<Coupon>
-  ) => void;
+  ) => Promise<boolean>;
 
   deleteCoupon: (
     id: string
-  ) => void;
+  ) => Promise<boolean>;
 
   toggleCoupon: (
     id: string
-  ) => void;
+  ) => Promise<boolean>;
 
   getCouponByCode: (
     code: string
@@ -100,9 +122,11 @@ type CouponContextType = {
 
   increaseCouponUsage: (
     id: string
-  ) => boolean;
+  ) => Promise<boolean>;
 
   clearCoupons: () => void;
+
+  reloadCoupons: () => Promise<void>;
 };
 
 // =====================================================
@@ -113,6 +137,267 @@ const CouponContext =
   createContext<CouponContextType | null>(
     null
   );
+
+// =====================================================
+// DB → 前端
+// =====================================================
+
+function normalizeCoupon(
+  coupon: any
+): Coupon {
+  const type: CouponType =
+    coupon?.type === "percentage"
+      ? "percentage"
+      : "fixed";
+
+  let value = Number(
+    coupon?.value ?? 0
+  );
+
+  let minAmount = Number(
+    coupon?.min_amount ?? 0
+  );
+
+  let maxDiscount:
+    | number
+    | null =
+    coupon?.max_discount !==
+        undefined &&
+      coupon?.max_discount !==
+        null
+      ? Number(
+          coupon.max_discount
+        )
+      : null;
+
+  if (
+    !Number.isFinite(
+      value
+    ) ||
+    value < 0
+  ) {
+    value = 0;
+  }
+
+  if (
+    !Number.isFinite(
+      minAmount
+    ) ||
+    minAmount < 0
+  ) {
+    minAmount = 0;
+  }
+
+  if (
+    maxDiscount !== null &&
+    (!Number.isFinite(
+      maxDiscount
+    ) ||
+      maxDiscount < 0)
+  ) {
+    maxDiscount = null;
+  }
+
+  if (type === "percentage") {
+    value = Math.min(
+      100,
+      value
+    );
+  }
+
+  const usageLimit =
+    coupon?.usage_limit !==
+      undefined &&
+    coupon?.usage_limit !==
+      null
+      ? Number(
+          coupon.usage_limit
+        )
+      : undefined;
+
+  return {
+    id: String(
+      coupon?.id ?? ""
+    ),
+
+    code: String(
+      coupon?.code ?? ""
+    )
+      .trim()
+      .toUpperCase(),
+
+    name: String(
+      coupon?.name ??
+        "未命名優惠券"
+    ).trim(),
+
+    type,
+
+    value,
+
+    minAmount,
+
+    maxDiscount,
+
+    startDate: coupon?.start_date
+      ? String(
+          coupon.start_date
+        )
+      : "",
+
+    endDate: coupon?.end_date
+      ? String(
+          coupon.end_date
+        )
+      : "",
+
+    active:
+      coupon?.active !== false,
+
+    usageLimit:
+      usageLimit !== undefined &&
+      Number.isFinite(
+        usageLimit
+      )
+        ? Math.max(
+            0,
+            Math.floor(
+              usageLimit
+            )
+          )
+        : undefined,
+
+    usedCount: Math.max(
+      0,
+      Number(
+        coupon?.used_count ?? 0
+      )
+    ),
+
+    createdAt:
+      coupon?.created_at ??
+      new Date().toISOString(),
+  };
+}
+
+// =====================================================
+// 前端 → DB
+// =====================================================
+
+function couponToDatabase(
+  coupon: Partial<Coupon>
+) {
+  const data: Record<
+    string,
+    any
+  > = {};
+
+  if (
+    coupon.code !==
+    undefined
+  ) {
+    data.code = String(
+      coupon.code
+    )
+      .trim()
+      .toUpperCase();
+  }
+
+  if (
+    coupon.name !==
+    undefined
+  ) {
+    data.name = String(
+      coupon.name
+    ).trim();
+  }
+
+  if (
+    coupon.type !==
+    undefined
+  ) {
+    data.type =
+      coupon.type;
+  }
+
+  if (
+    coupon.value !==
+    undefined
+  ) {
+    data.value =
+      Number(
+        coupon.value
+      ) || 0;
+  }
+
+  if (
+    coupon.minAmount !==
+    undefined
+  ) {
+    data.min_amount =
+      Number(
+        coupon.minAmount
+      ) || 0;
+  }
+
+  if (
+    coupon.maxDiscount !==
+    undefined
+  ) {
+    data.max_discount =
+      coupon.maxDiscount ===
+        null
+        ? null
+        : Number(
+            coupon.maxDiscount
+          ) || 0;
+  }
+
+  if (
+    coupon.startDate !==
+    undefined
+  ) {
+    data.start_date =
+      coupon.startDate;
+  }
+
+  if (
+    coupon.endDate !==
+    undefined
+  ) {
+    data.end_date =
+      coupon.endDate;
+  }
+
+  if (
+    coupon.active !==
+    undefined
+  ) {
+    data.active =
+      coupon.active;
+  }
+
+  if (
+    coupon.usageLimit !==
+    undefined
+  ) {
+    data.usage_limit =
+      coupon.usageLimit ===
+        null
+        ? null
+        : coupon.usageLimit;
+  }
+
+  if (
+    coupon.usedCount !==
+    undefined
+  ) {
+    data.used_count =
+      coupon.usedCount;
+  }
+
+  return data;
+}
 
 // =====================================================
 // Provider
@@ -130,173 +415,53 @@ export function CouponProvider({
     useState(false);
 
   // ===================================================
-  // 建立 ID
-  // ===================================================
-
-  function createCouponId() {
-    return `coupon-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`;
-  }
-
-  // ===================================================
-  // 建立日期
-  // ===================================================
-
-  function createCreatedAt() {
-    return new Date().toISOString();
-  }
-
-  // ===================================================
-  // 正規化優惠券
-  // ===================================================
-
-  function normalizeCoupon(
-    coupon: any
-  ): Coupon {
-    const type: CouponType =
-      coupon.type === "percentage"
-        ? "percentage"
-        : "fixed";
-
-    let value = Number(
-      coupon.value ?? 0
-    );
-
-    let minAmount = Number(
-      coupon.minAmount ?? 0
-    );
-
-    if (
-      !Number.isFinite(value) ||
-      value < 0
-    ) {
-      value = 0;
-    }
-
-    if (
-      !Number.isFinite(minAmount) ||
-      minAmount < 0
-    ) {
-      minAmount = 0;
-    }
-
-    if (type === "percentage") {
-      value = Math.min(
-        100,
-        value
-      );
-    }
-
-    return {
-      id:
-        String(
-          coupon.id ??
-            createCouponId()
-        ),
-
-      code:
-        String(
-          coupon.code ??
-            ""
-        )
-          .trim()
-          .toUpperCase(),
-
-      name:
-        String(
-          coupon.name ??
-            "未命名優惠券"
-        ).trim(),
-
-      type,
-
-      value,
-
-      minAmount,
-
-      startDate:
-        coupon.startDate
-          ? String(
-              coupon.startDate
-            )
-          : "",
-
-      endDate:
-        coupon.endDate
-          ? String(
-              coupon.endDate
-            )
-          : "",
-
-      active:
-        coupon.active !== false,
-
-      usageLimit:
-        coupon.usageLimit !==
-          undefined &&
-        coupon.usageLimit !==
-          null &&
-        coupon.usageLimit !== ""
-          ? Math.max(
-              0,
-              Number(
-                coupon.usageLimit
-              )
-            )
-          : undefined,
-
-      usedCount: Math.max(
-        0,
-        Number(
-          coupon.usedCount ??
-            0
-        )
-      ),
-
-      createdAt:
-        coupon.createdAt ??
-        createCreatedAt(),
-    };
-  }
-
-  // ===================================================
   // 載入優惠券
   // ===================================================
 
-  useEffect(() => {
+  async function loadCoupons() {
+    if (!supabase) {
+      console.error(
+        "Supabase 環境變數不存在。"
+      );
+
+      setCoupons([]);
+
+      setLoaded(true);
+
+      return;
+    }
+
     try {
-      const savedCoupons =
-        localStorage.getItem(
-          "coupons"
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("coupons")
+        .select("*")
+        .order(
+          "created_at",
+          {
+            ascending: false,
+          }
         );
 
-      if (savedCoupons) {
-        const parsedCoupons =
-          JSON.parse(
-            savedCoupons
-          );
+      if (error) {
+        console.error(
+          "讀取優惠券資料失敗：",
+          error
+        );
 
-        if (
-          Array.isArray(
-            parsedCoupons
-          )
-        ) {
-          const normalizedCoupons =
-            parsedCoupons.map(
-              (
-                coupon: any
-              ) =>
-                normalizeCoupon(
-                  coupon
-                )
-            );
-
-          setCoupons(
-            normalizedCoupons
-          );
-        }
+        return;
       }
+
+      const normalized =
+        (data ?? []).map(
+          normalizeCoupon
+        );
+
+      setCoupons(
+        normalized
+      );
     } catch (error) {
       console.error(
         "讀取優惠券資料失敗：",
@@ -305,154 +470,281 @@ export function CouponProvider({
     } finally {
       setLoaded(true);
     }
-  }, []);
+  }
 
   // ===================================================
-  // 儲存優惠券
+  // 初始化
   // ===================================================
 
   useEffect(() => {
-    if (!loaded) {
-      return;
-    }
-
-    try {
-      localStorage.setItem(
-        "coupons",
-        JSON.stringify(
-          coupons
-        )
-      );
-    } catch (error) {
-      console.error(
-        "儲存優惠券資料失敗：",
-        error
-      );
-    }
-  }, [
-    coupons,
-    loaded,
-  ]);
+    loadCoupons();
+  }, []);
 
   // ===================================================
   // 新增優惠券
   // ===================================================
 
-  function addCoupon(
+  async function addCoupon(
     coupon: Omit<
       Coupon,
       "id" | "createdAt" | "usedCount"
     >
-  ) {
-    const normalized =
-      normalizeCoupon({
-        ...coupon,
-
-        usedCount: 0,
-      });
-
-    const exists =
-      coupons.some(
-        (item) =>
-          item.code.toUpperCase() ===
-          normalized.code.toUpperCase()
+  ): Promise<boolean> {
+    if (!supabase) {
+      console.error(
+        "Supabase Client 尚未建立。"
       );
 
-    if (exists) {
-      console.warn(
-        "優惠碼已存在：",
-        normalized.code
-      );
-
-      return;
+      return false;
     }
 
-    setCoupons(
-      (prevCoupons) => [
-        ...prevCoupons,
-        normalized,
-      ]
-    );
+    const code =
+      String(
+        coupon.code
+      )
+        .trim()
+        .toUpperCase();
+
+    if (!code) {
+      return false;
+    }
+
+    const duplicate =
+      coupons.some(
+        (item) =>
+          item.code
+            .trim()
+            .toUpperCase() ===
+          code
+      );
+
+    if (duplicate) {
+      console.warn(
+        "優惠碼已存在：",
+        code
+      );
+
+      return false;
+    }
+
+    try {
+      const dbCoupon =
+        couponToDatabase({
+          ...coupon,
+
+          code,
+
+          usedCount: 0,
+
+          // 固定金額折扣不需要最高折扣
+          maxDiscount:
+            coupon.type ===
+            "percentage"
+              ? coupon.maxDiscount
+              : null,
+        });
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("coupons")
+        .insert(
+          dbCoupon
+        )
+        .select("*")
+        .single();
+
+      if (error) {
+        console.error(
+          "新增優惠券失敗：",
+          error
+        );
+
+        return false;
+      }
+
+      if (data) {
+        const normalized =
+          normalizeCoupon(
+            data
+          );
+
+        setCoupons(
+          (prev) => [
+            normalized,
+            ...prev,
+          ]
+        );
+      }
+
+      return true;
+    } catch (error) {
+      console.error(
+        "新增優惠券失敗：",
+        error
+      );
+
+      return false;
+    }
   }
 
   // ===================================================
   // 更新優惠券
   // ===================================================
 
-  function updateCoupon(
+  async function updateCoupon(
     id: string,
     updates: Partial<Coupon>
-  ) {
-    setCoupons(
-      (prevCoupons) =>
-        prevCoupons.map(
-          (coupon) => {
-            if (
-              String(
-                coupon.id
-              ) !==
-              String(id)
-            ) {
-              return coupon;
-            }
+  ): Promise<boolean> {
+    if (!supabase) {
+      return false;
+    }
 
-            return normalizeCoupon({
-              ...coupon,
-              ...updates,
-              id: coupon.id,
-              createdAt:
-                coupon.createdAt,
-              usedCount:
-                updates.usedCount ??
-                coupon.usedCount,
-            });
+    try {
+      const dbUpdates =
+        couponToDatabase(
+          {
+            ...updates,
+
+            // 固定金額折扣不需要最高折扣
+            ...(updates.type ===
+              "fixed"
+              ? {
+                  maxDiscount:
+                    null,
+                }
+              : {}),
           }
+        );
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("coupons")
+        .update(
+          dbUpdates
         )
-    );
+        .eq(
+          "id",
+          id
+        )
+        .select("*")
+        .single();
+
+      if (error) {
+        console.error(
+          "更新優惠券失敗：",
+          error
+        );
+
+        return false;
+      }
+
+      if (data) {
+        const normalized =
+          normalizeCoupon(
+            data
+          );
+
+        setCoupons(
+          (prev) =>
+            prev.map(
+              (coupon) =>
+                coupon.id ===
+                id
+                  ? normalized
+                  : coupon
+            )
+        );
+      }
+
+      return true;
+    } catch (error) {
+      console.error(
+        "更新優惠券失敗：",
+        error
+      );
+
+      return false;
+    }
   }
 
   // ===================================================
   // 刪除優惠券
   // ===================================================
 
-  function deleteCoupon(
+  async function deleteCoupon(
     id: string
-  ) {
-    setCoupons(
-      (prevCoupons) =>
-        prevCoupons.filter(
-          (coupon) =>
-            String(
-              coupon.id
-            ) !==
-            String(id)
-        )
-    );
+  ): Promise<boolean> {
+    if (!supabase) {
+      return false;
+    }
+
+    try {
+      const {
+        error,
+      } = await supabase
+        .from("coupons")
+        .delete()
+        .eq(
+          "id",
+          id
+        );
+
+      if (error) {
+        console.error(
+          "刪除優惠券失敗：",
+          error
+        );
+
+        return false;
+      }
+
+      setCoupons(
+        (prev) =>
+          prev.filter(
+            (coupon) =>
+              coupon.id !==
+              id
+          )
+      );
+
+      return true;
+    } catch (error) {
+      console.error(
+        "刪除優惠券失敗：",
+        error
+      );
+
+      return false;
+    }
   }
 
   // ===================================================
   // 啟用 / 停用
   // ===================================================
 
-  function toggleCoupon(
+  async function toggleCoupon(
     id: string
-  ) {
-    setCoupons(
-      (prevCoupons) =>
-        prevCoupons.map(
-          (coupon) =>
-            String(
-              coupon.id
-            ) ===
-            String(id)
-              ? {
-                  ...coupon,
+  ): Promise<boolean> {
+    const coupon =
+      coupons.find(
+        (item) =>
+          item.id === id
+      );
 
-                  active:
-                    !coupon.active,
-                }
-              : coupon
-        )
+    if (!coupon) {
+      return false;
+    }
+
+    return updateCoupon(
+      id,
+      {
+        active:
+          !coupon.active,
+      }
     );
   }
 
@@ -505,6 +797,10 @@ export function CouponProvider({
 
     let discount = 0;
 
+    // -------------------------------------------------
+    // 固定金額折扣
+    // -------------------------------------------------
+
     if (
       coupon.type ===
       "fixed"
@@ -514,6 +810,10 @@ export function CouponProvider({
           coupon.value
         ) || 0;
     }
+
+    // -------------------------------------------------
+    // 百分比折扣
+    // -------------------------------------------------
 
     if (
       coupon.type ===
@@ -525,6 +825,32 @@ export function CouponProvider({
           coupon.value
         ) || 0) /
           100);
+
+      // 最高折扣上限
+      if (
+        coupon.maxDiscount !==
+          null &&
+        coupon.maxDiscount !==
+          undefined
+      ) {
+        const maxDiscount =
+          Number(
+            coupon.maxDiscount
+          );
+
+        if (
+          Number.isFinite(
+            maxDiscount
+          ) &&
+          maxDiscount >= 0
+        ) {
+          discount =
+            Math.min(
+              discount,
+              maxDiscount
+            );
+        }
+      }
     }
 
     discount = Math.max(
@@ -771,16 +1097,17 @@ export function CouponProvider({
   // 增加優惠券使用次數
   // ===================================================
 
-  function increaseCouponUsage(
+  async function increaseCouponUsage(
     id: string
-  ): boolean {
+  ): Promise<boolean> {
+    if (!supabase) {
+      return false;
+    }
+
     const coupon =
       coupons.find(
         (item) =>
-          String(
-            item.id
-          ) ===
-          String(id)
+          item.id === id
       );
 
     if (!coupon) {
@@ -796,26 +1123,62 @@ export function CouponProvider({
       return false;
     }
 
-    setCoupons(
-      (prevCoupons) =>
-        prevCoupons.map(
-          (item) =>
-            String(
-              item.id
-            ) ===
-            String(id)
-              ? {
-                  ...item,
+    try {
+      const newUsedCount =
+        coupon.usedCount +
+        1;
 
-                  usedCount:
-                    item.usedCount +
-                    1,
-                }
-              : item
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("coupons")
+        .update({
+          used_count:
+            newUsedCount,
+        })
+        .eq(
+          "id",
+          id
         )
-    );
+        .select("*")
+        .single();
 
-    return true;
+      if (error) {
+        console.error(
+          "增加優惠券使用次數失敗：",
+          error
+        );
+
+        return false;
+      }
+
+      if (data) {
+        const normalized =
+          normalizeCoupon(
+            data
+          );
+
+        setCoupons(
+          (prev) =>
+            prev.map(
+              (item) =>
+                item.id === id
+                  ? normalized
+                  : item
+            )
+        );
+      }
+
+      return true;
+    } catch (error) {
+      console.error(
+        "增加優惠券使用次數失敗：",
+        error
+      );
+
+      return false;
+    }
   }
 
   // ===================================================
@@ -852,6 +1215,9 @@ export function CouponProvider({
         increaseCouponUsage,
 
         clearCoupons,
+
+        reloadCoupons:
+          loadCoupons,
       }}
     >
       {children}

@@ -1,2008 +1,1373 @@
-  "use client";
+"use client";
 
-  import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-  // =====================================================
-  // 型別
-  // =====================================================
+import { useCoupon } from "@/components/CouponProvider";
 
-  type CouponType = "percentage" | "fixed";
+// =====================================================
+// Type
+// =====================================================
 
-  type CouponStatus = "啟用" | "停用";
+type CouponType =
+  | "percentage"
+  | "fixed";
 
-  type Coupon = {
-    id: string;
-    code: string;
-    name: string;
+type CouponStatus =
+  | "啟用"
+  | "停用";
 
-    type: CouponType;
+type Coupon = {
+  id: string;
+  code: string;
+  name: string;
+  type: CouponType;
+  value: number;
+  minAmount: number;
+  maxDiscount: number | null;
+  usageLimit: number | null;
+  usedCount: number;
+  startDate: string;
+  endDate: string;
+  active: boolean;
+  createdAt: string;
+};
 
-    value: number;
+type CouponForm = {
+  code: string;
+  name: string;
+  type: CouponType;
+  value: string;
+  minAmount: string;
+  maxDiscount: string;
+  usageLimit: string;
+  startDate: string;
+  endDate: string;
+  status: CouponStatus;
+};
 
-    minAmount: number;
+// =====================================================
+// Empty Form
+// =====================================================
 
-    maxDiscount: number | null;
+const emptyForm: CouponForm = {
+  code: "",
+  name: "",
+  type: "percentage",
+  value: "",
+  minAmount: "0",
+  maxDiscount: "",
+  usageLimit: "",
+  startDate: "",
+  endDate: "",
+  status: "啟用",
+};
 
-    usageLimit: number | null;
+// =====================================================
+// Helpers
+// =====================================================
 
-    usedCount: number;
+function formatMoney(value: number) {
+  return `NT$ ${Number(value || 0).toLocaleString(
+    "zh-TW"
+  )}`;
+}
 
-    startDate: string;
+function getToday() {
+  return new Date()
+    .toISOString()
+    .slice(0, 10);
+}
 
-    endDate: string;
+// =====================================================
+// Page
+// =====================================================
 
-    status: CouponStatus;
+export default function CouponsPage() {
+  const {
+    coupons: providerCoupons,
+    addCoupon,
+    updateCoupon,
+    deleteCoupon,
+    toggleCoupon,
+    increaseCouponUsage,
+  } = useCoupon();
 
-    createdAt: string;
-  };
+  const coupons = providerCoupons as Coupon[];
 
-  // =====================================================
-  // 預設表單
-  // =====================================================
+  // ===================================================
+  // State
+  // ===================================================
 
-  const emptyForm = {
-    code: "",
-    name: "",
-    type: "percentage" as CouponType,
-    value: "",
-    minAmount: "0",
-    maxDiscount: "",
-    usageLimit: "",
-    startDate: "",
-    endDate: "",
-    status: "啟用" as CouponStatus,
-  };
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
 
-  // =====================================================
-  // 工具
-  // =====================================================
+  const [search, setSearch] =
+    useState("");
 
-  function createId() {
-    return `${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 10)}`;
-  }
+  const [statusFilter, setStatusFilter] =
+    useState<"全部" | CouponStatus>("全部");
 
-  function formatMoney(value: number) {
-    return `NT$ ${value.toLocaleString("zh-TW")}`;
-  }
+  const [form, setForm] =
+    useState<CouponForm>({
+      ...emptyForm,
+      startDate: getToday(),
+      endDate: getToday(),
+    });
 
-  function getToday() {
-    return new Date().toISOString().slice(0, 10);
-  }
+  // ===================================================
+  // Coupon Status
+  // ===================================================
 
-  // =====================================================
-  // Coupon Page
-  // =====================================================
+  function getCouponStatus(coupon: Coupon) {
+    const today = getToday();
 
-  export default function CouponsPage() {
-    // ===================================================
-    // State
-    // ===================================================
-
-    const [coupons, setCoupons] = useState<Coupon[]>([]);
-
-    const [loaded, setLoaded] = useState(false);
-
-    const [editingId, setEditingId] =
-      useState<string | null>(null);
-
-    const [search, setSearch] = useState("");
-
-    const [statusFilter, setStatusFilter] =
-      useState<"全部" | CouponStatus>("全部");
-
-    const [form, setForm] = useState(emptyForm);
-
-    // ===================================================
-    // 載入優惠券
-    // ===================================================
-
-    useEffect(() => {
-      try {
-        const saved =
-          localStorage.getItem("coupons");
-
-        if (!saved) {
-          setLoaded(true);
-          return;
-        }
-
-        const parsed = JSON.parse(saved);
-
-        if (!Array.isArray(parsed)) {
-          setLoaded(true);
-          return;
-        }
-
-        const normalized: Coupon[] =
-          parsed.map((item: any) => ({
-            id:
-              String(
-                item.id ??
-                  createId()
-              ),
-
-            code:
-              String(
-                item.code ?? ""
-              ).toUpperCase(),
-
-            name:
-              String(
-                item.name ?? ""
-              ),
-
-            type:
-              item.type ===
-              "fixed"
-                ? "fixed"
-                : "percentage",
-
-            value:
-              Number(
-                item.value ?? 0
-              ),
-
-            minAmount:
-              Number(
-                item.minAmount ?? 0
-              ),
-
-            maxDiscount:
-              item.maxDiscount ===
-                null ||
-              item.maxDiscount ===
-                undefined ||
-              item.maxDiscount ===
-                ""
-                ? null
-                : Number(
-                    item.maxDiscount
-                  ),
-
-            usageLimit:
-              item.usageLimit ===
-                null ||
-              item.usageLimit ===
-                undefined ||
-              item.usageLimit ===
-                ""
-                ? null
-                : Number(
-                    item.usageLimit
-                  ),
-
-            usedCount:
-              Number(
-                item.usedCount ?? 0
-              ),
-
-            startDate:
-              String(
-                item.startDate ?? ""
-              ),
-
-            endDate:
-              String(
-                item.endDate ?? ""
-              ),
-
-            status:
-              item.status ===
-              "停用"
-                ? "停用"
-                : "啟用",
-
-            createdAt:
-              String(
-                item.createdAt ??
-                  new Date().toISOString()
-              ),
-          }));
-
-        setCoupons(normalized);
-      } catch (error) {
-        console.error(
-          "讀取優惠券資料失敗：",
-          error
-        );
-      } finally {
-        setLoaded(true);
-      }
-    }, []);
-
-    // ===================================================
-    // 儲存優惠券
-    // ===================================================
-
-    useEffect(() => {
-      if (!loaded) {
-        return;
-      }
-
-      try {
-        localStorage.setItem(
-          "coupons",
-          JSON.stringify(coupons)
-        );
-      } catch (error) {
-        console.error(
-          "儲存優惠券資料失敗：",
-          error
-        );
-      }
-    }, [coupons, loaded]);
-
-    // ===================================================
-    // 優惠券狀態
-    // ===================================================
-
-    function getCouponStatus(
-      coupon: Coupon
-    ) {
-      if (coupon.status === "停用") {
-        return {
-          text: "已停用",
-          className:
-            "bg-gray-100 text-gray-600 border-gray-200",
-        };
-      }
-
-      const today = getToday();
-
-      if (
-        coupon.startDate &&
-        today <
-          coupon.startDate
-      ) {
-        return {
-          text: "尚未開始",
-          className:
-            "bg-blue-100 text-blue-700 border-blue-200",
-        };
-      }
-
-      if (
-        coupon.endDate &&
-        today >
-          coupon.endDate
-      ) {
-        return {
-          text: "已過期",
-          className:
-            "bg-red-100 text-red-700 border-red-200",
-        };
-      }
-
-      if (
-        coupon.usageLimit !== null &&
-        coupon.usedCount >=
-          coupon.usageLimit
-      ) {
-        return {
-          text: "已用完",
-          className:
-            "bg-orange-100 text-orange-700 border-orange-200",
-        };
-      }
-
-      return {
-        text: "使用中",
-        className:
-          "bg-green-100 text-green-700 border-green-200",
-      };
+    if (!coupon.active) {
+      return "已停用";
     }
 
-    // ===================================================
-    // 統計
-    // ===================================================
+    if (today < coupon.startDate) {
+      return "尚未開始";
+    }
 
-    const totalCoupons =
-      coupons.length;
+    if (today > coupon.endDate) {
+      return "已過期";
+    }
 
-    const activeCoupons =
-      coupons.filter(
-        (coupon) =>
-          coupon.status ===
-          "啟用"
-      ).length;
+    if (
+      coupon.usageLimit !== null &&
+      coupon.usageLimit !== undefined &&
+      coupon.usedCount >= coupon.usageLimit
+    ) {
+      return "已用完";
+    }
 
-    const availableCoupons =
-      coupons.filter(
-        (coupon) =>
-          getCouponStatus(
-            coupon
-          ).text ===
-          "使用中"
-      ).length;
+    return "使用中";
+  }
 
-    const totalUsed =
-      coupons.reduce(
-        (sum, coupon) =>
-          sum +
-          Number(
-            coupon.usedCount || 0
-          ),
-        0
+  // ===================================================
+  // Status Style
+  // ===================================================
+
+  function getStatusStyle(status: string) {
+    switch (status) {
+      case "使用中":
+        return "bg-green-500/10 text-green-400 border-green-500/20";
+
+      case "已停用":
+        return "bg-gray-500/10 text-gray-300 border-gray-500/20";
+
+      case "尚未開始":
+        return "bg-blue-500/10 text-blue-400 border-blue-500/20";
+
+      case "已過期":
+        return "bg-red-500/10 text-red-400 border-red-500/20";
+
+      case "已用完":
+        return "bg-orange-500/10 text-orange-400 border-orange-500/20";
+
+      default:
+        return "bg-gray-500/10 text-gray-300 border-gray-500/20";
+    }
+  }
+
+  // ===================================================
+  // Statistics
+  // ===================================================
+
+  const totalCoupons = coupons.length;
+
+  const activeCoupons = coupons.filter(
+    (coupon) => coupon.active
+  ).length;
+
+  const availableCoupons = coupons.filter(
+    (coupon) =>
+      getCouponStatus(coupon) === "使用中"
+  ).length;
+
+  const totalUsed = coupons.reduce(
+    (sum, coupon) =>
+      sum + Number(coupon.usedCount || 0),
+    0
+  );
+
+  // ===================================================
+  // Search / Filter
+  // ===================================================
+
+  const filteredCoupons = useMemo(() => {
+    const keyword = search
+      .trim()
+      .toLowerCase();
+
+    return [...coupons]
+      .filter((coupon) => {
+        if (!keyword) {
+          return true;
+        }
+
+        return (
+          coupon.code
+            .toLowerCase()
+            .includes(keyword) ||
+          coupon.name
+            .toLowerCase()
+            .includes(keyword)
+        );
+      })
+      .filter((coupon) => {
+        if (statusFilter === "全部") {
+          return true;
+        }
+
+        return statusFilter === "啟用"
+          ? coupon.active
+          : !coupon.active;
+      })
+      .sort((a, b) =>
+        String(b.createdAt).localeCompare(
+          String(a.createdAt)
+        )
       );
+  }, [
+    coupons,
+    search,
+    statusFilter,
+  ]);
 
-    // ===================================================
-    // 搜尋 + 篩選
-    // ===================================================
+  // ===================================================
+  // Form
+  // ===================================================
 
-    const filteredCoupons =
-      useMemo(() => {
-        const keyword =
-          search
-            .trim()
-            .toLowerCase();
+  function resetForm() {
+    setEditingId(null);
 
-        return coupons.filter(
-          (coupon) => {
-            const matchSearch =
-              !keyword ||
-              coupon.code
-                .toLowerCase()
-                .includes(keyword) ||
-              coupon.name
-                .toLowerCase()
-                .includes(keyword);
+    setForm({
+      ...emptyForm,
+      startDate: getToday(),
+      endDate: getToday(),
+    });
+  }
 
-            const matchStatus =
-              statusFilter ===
-                "全部" ||
-              coupon.status ===
-                statusFilter;
+  function handleAdd() {
+    resetForm();
 
-            return (
-              matchSearch &&
-              matchStatus
-            );
-          }
-        );
-      }, [
-        coupons,
-        search,
-        statusFilter,
-      ]);
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
 
-    // ===================================================
-    // 表單重設
-    // ===================================================
+  function handleEdit(coupon: Coupon) {
+    setEditingId(coupon.id);
 
-    function resetForm() {
-      setEditingId(null);
+    setForm({
+      code: coupon.code,
+      name: coupon.name,
+      type: coupon.type,
+      value: String(coupon.value),
+      minAmount: String(
+        coupon.minAmount ?? 0
+      ),
+      maxDiscount:
+        coupon.maxDiscount !== null &&
+        coupon.maxDiscount !== undefined
+          ? String(coupon.maxDiscount)
+          : "",
+      usageLimit:
+        coupon.usageLimit !== null &&
+        coupon.usageLimit !== undefined
+          ? String(coupon.usageLimit)
+          : "",
+      startDate: coupon.startDate,
+      endDate: coupon.endDate,
+      status: coupon.active
+        ? "啟用"
+        : "停用",
+    });
 
-      setForm({
-        ...emptyForm,
-        startDate: getToday(),
-        endDate: getToday(),
-      });
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
+  function updateForm(
+    field: keyof CouponForm,
+    value: string
+  ) {
+    setForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
+  // ===================================================
+  // Submit
+  // ===================================================
+
+  async function handleSubmit(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    const code = form.code
+      .trim()
+      .toUpperCase();
+
+    const name = form.name.trim();
+
+    const rawValue = String(
+      form.value ?? ""
+    ).trim();
+
+    const value =
+      rawValue === ""
+        ? NaN
+        : Number(rawValue);
+
+    const rawMinAmount = String(
+      form.minAmount ?? ""
+    ).trim();
+
+    const minAmount =
+      rawMinAmount === ""
+        ? 0
+        : Number(rawMinAmount);
+
+    const rawMaxDiscount = String(
+      form.maxDiscount ?? ""
+    ).trim();
+
+    const maxDiscount =
+      rawMaxDiscount === ""
+        ? null
+        : Number(rawMaxDiscount);
+
+    const rawUsageLimit = String(
+      form.usageLimit ?? ""
+    ).trim();
+
+    const usageLimit =
+      rawUsageLimit === ""
+        ? undefined
+        : Number(rawUsageLimit);
+
+    if (!code) {
+      alert("請輸入優惠券代碼");
+      return;
     }
 
-    // ===================================================
-    // 新增按鈕
-    // ===================================================
-
-    function handleAdd() {
-      setEditingId(null);
-
-      setForm({
-        ...emptyForm,
-        startDate: getToday(),
-        endDate: getToday(),
-      });
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
+    if (!name) {
+      alert("請輸入優惠券名稱");
+      return;
     }
 
-    // ===================================================
-    // 編輯
-    // ===================================================
-
-    function handleEdit(
-      coupon: Coupon
+    if (
+      rawValue.length === 0 ||
+      Number.isNaN(value) ||
+      !Number.isFinite(value) ||
+      value <= 0
     ) {
-      setEditingId(coupon.id);
-
-      setForm({
-        code: coupon.code,
-        name: coupon.name,
-        type: coupon.type,
-        value: String(
-          coupon.value
-        ),
-        minAmount: String(
-          coupon.minAmount
-        ),
-        maxDiscount:
-          coupon.maxDiscount ===
-          null
-            ? ""
-            : String(
-                coupon.maxDiscount
-              ),
-        usageLimit:
-          coupon.usageLimit ===
-          null
-            ? ""
-            : String(
-                coupon.usageLimit
-              ),
-        startDate:
-          coupon.startDate,
-        endDate:
-          coupon.endDate,
-        status:
-          coupon.status,
-      });
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
+      alert("優惠內容必須大於 0");
+      return;
     }
 
-    // ===================================================
-    // 表單送出
-    // ===================================================
-
-    function handleSubmit(
-      e: React.FormEvent
+    if (
+      form.type === "percentage" &&
+      value > 100
     ) {
-      e.preventDefault();
+      alert("百分比折扣不能超過 100%");
+      return;
+    }
 
-      const code =
-        form.code
+    if (
+      Number.isNaN(minAmount) ||
+      !Number.isFinite(minAmount) ||
+      minAmount < 0
+    ) {
+      alert("最低消費金額不能小於 0");
+      return;
+    }
+
+    if (
+      maxDiscount !== null &&
+      (
+        Number.isNaN(maxDiscount) ||
+        !Number.isFinite(maxDiscount) ||
+        maxDiscount <= 0
+      )
+    ) {
+      alert("最高折抵金額必須大於 0");
+      return;
+    }
+
+    if (
+      usageLimit !== undefined &&
+      (
+        Number.isNaN(usageLimit) ||
+        !Number.isFinite(usageLimit) ||
+        usageLimit < 0 ||
+        !Number.isInteger(usageLimit)
+      )
+    ) {
+      alert(
+        "使用次數上限必須是大於等於 0 的整數"
+      );
+      return;
+    }
+
+    if (
+      !form.startDate ||
+      !form.endDate
+    ) {
+      alert("請設定優惠券有效日期");
+      return;
+    }
+
+    if (
+      form.endDate <
+      form.startDate
+    ) {
+      alert(
+        "結束日期不能早於開始日期"
+      );
+      return;
+    }
+
+    const duplicate = coupons.some(
+      (coupon) =>
+        coupon.id !== editingId &&
+        coupon.code
           .trim()
-          .toUpperCase();
+          .toUpperCase() === code
+    );
 
-      const name =
-        form.name.trim();
+    if (duplicate) {
+      alert(
+        `優惠券代碼「${code}」已存在`
+      );
+      return;
+    }
 
-      const value =
-        Number(form.value);
+    const payload = {
+      code,
+      name,
+      type: form.type,
+      value,
+      minAmount,
+      maxDiscount:
+        form.type === "percentage"
+          ? maxDiscount
+          : null,
+      usageLimit,
+      active:
+        form.status === "啟用",
+      startDate: form.startDate,
+      endDate: form.endDate,
+    };
 
-      const minAmount =
-        Number(
-          form.minAmount
-        );
+    if (!editingId) {
+      try {
+        await addCoupon(payload);
 
-      const maxDiscount =
-        form.maxDiscount.trim() ===
-        ""
-          ? null
-          : Number(
-              form.maxDiscount
-            );
-
-      const usageLimit =
-        form.usageLimit.trim() ===
-        ""
-          ? null
-          : Number(
-              form.usageLimit
-            );
-
-      // -----------------------------------------------
-      // 基本驗證
-      // -----------------------------------------------
-
-      if (!code) {
-        alert(
-          "請輸入優惠券代碼"
-        );
-        return;
-      }
-
-      if (!name) {
-        alert(
-          "請輸入優惠券名稱"
-        );
-        return;
-      }
-
-      if (
-        !Number.isFinite(value) ||
-        value <= 0
-      ) {
-        alert(
-          "請輸入有效的優惠內容"
-        );
-        return;
-      }
-
-      if (
-        form.type ===
-          "percentage" &&
-        value > 100
-      ) {
-        alert(
-          "百分比折扣不能超過 100%"
-        );
-        return;
-      }
-
-      if (
-        !Number.isFinite(
-          minAmount
-        ) ||
-        minAmount < 0
-      ) {
-        alert(
-          "最低消費不能小於 0"
-        );
-        return;
-      }
-
-      if (
-        maxDiscount !== null &&
-        (!Number.isFinite(
-          maxDiscount
-        ) ||
-          maxDiscount < 0)
-      ) {
-        alert(
-          "最大折扣金額無效"
-        );
-        return;
-      }
-
-      if (
-        usageLimit !== null &&
-        (!Number.isInteger(
-          usageLimit
-        ) ||
-          usageLimit <= 0)
-      ) {
-        alert(
-          "使用次數必須是大於 0 的整數"
-        );
-        return;
-      }
-
-      if (
-        !form.startDate
-      ) {
-        alert(
-          "請選擇開始日期"
-        );
-        return;
-      }
-
-      if (
-        !form.endDate
-      ) {
-        alert(
-          "請選擇結束日期"
-        );
-        return;
-      }
-
-      if (
-        form.endDate <
-        form.startDate
-      ) {
-        alert(
-          "結束日期不能早於開始日期"
-        );
-        return;
-      }
-
-      // -----------------------------------------------
-      // 檢查代碼重複
-      // -----------------------------------------------
-
-      const duplicate =
-        coupons.some(
-          (coupon) =>
-            coupon.code ===
-              code &&
-            coupon.id !==
-              editingId
-        );
-
-      if (duplicate) {
-        alert(
-          "優惠券代碼已存在"
-        );
-        return;
-      }
-
-      // -----------------------------------------------
-      // 編輯
-      // -----------------------------------------------
-
-      if (editingId !== null) {
-        setCoupons(
-          (prevCoupons) =>
-            prevCoupons.map(
-              (coupon) => {
-                if (
-                  coupon.id !==
-                  editingId
-                ) {
-                  return coupon;
-                }
-
-                return {
-                  ...coupon,
-
-                  code,
-
-                  name,
-
-                  type:
-                    form.type,
-
-                  value,
-
-                  minAmount,
-
-                  maxDiscount,
-
-                  usageLimit,
-
-                  startDate:
-                    form.startDate,
-
-                  endDate:
-                    form.endDate,
-
-                  status:
-                    form.status,
-                };
-              }
-            )
-        );
-
-        alert(
-          "優惠券更新成功！"
-        );
+        alert("優惠券新增成功");
 
         resetForm();
+      } catch (error) {
+        console.error(
+          "新增優惠券失敗：",
+          error
+        );
 
-        return;
+        alert(
+          "新增優惠券失敗，請查看瀏覽器 Console。"
+        );
       }
 
-      // -----------------------------------------------
-      // 新增
-      // -----------------------------------------------
+      return;
+    }
 
-      const newCoupon: Coupon =
-        {
-          id: createId(),
-
-          code,
-
-          name,
-
-          type:
-            form.type,
-
-          value,
-
-          minAmount,
-
-          maxDiscount,
-
-          usageLimit,
-
-          usedCount: 0,
-
-          startDate:
-            form.startDate,
-
-          endDate:
-            form.endDate,
-
-          status:
-            form.status,
-
-          createdAt:
-            new Date().toISOString(),
-        };
-
-      setCoupons(
-        (prevCoupons) => [
-          ...prevCoupons,
-          newCoupon,
-        ]
+    try {
+      await updateCoupon(
+        editingId,
+        payload
       );
 
-      alert(
-        "優惠券新增成功！"
-      );
+      alert("優惠券更新成功");
 
       resetForm();
-    }
-
-    // ===================================================
-    // 刪除
-    // ===================================================
-
-    function handleDelete(
-      id: string
-    ) {
-      const coupon =
-        coupons.find(
-          (item) =>
-            item.id === id
-        );
-
-      if (!coupon) {
-        return;
-      }
-
-      const confirmed =
-        window.confirm(
-          `確定要刪除優惠券「${coupon.code}」嗎？`
-        );
-
-      if (!confirmed) {
-        return;
-      }
-
-      setCoupons(
-        (prevCoupons) =>
-          prevCoupons.filter(
-            (item) =>
-              item.id !== id
-          )
+    } catch (error) {
+      console.error(
+        "更新優惠券失敗：",
+        error
       );
 
+      alert(
+        "更新優惠券失敗，請查看瀏覽器 Console。"
+      );
+    }
+  }
+
+  // ===================================================
+  // Delete
+  // ===================================================
+
+  async function handleDelete(
+    coupon: Coupon
+  ) {
+    const confirmed =
+      window.confirm(
+        `確定要刪除優惠券「${coupon.code}」嗎？\n\n刪除後無法復原。`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteCoupon(coupon.id);
+
       if (
-        editingId === id
+        editingId === coupon.id
       ) {
         resetForm();
       }
 
+      alert("優惠券已刪除");
+    } catch (error) {
+      console.error(
+        "刪除優惠券失敗：",
+        error
+      );
+
       alert(
-        "優惠券已刪除！"
+        "刪除優惠券失敗，請稍後再試。"
       );
     }
+  }
 
-    // ===================================================
-    // 啟用 / 停用
-    // ===================================================
+  // ===================================================
+  // Toggle
+  // ===================================================
 
-    function toggleStatus(
-      id: string
+  async function handleToggle(
+    coupon: Coupon
+  ) {
+    const action =
+      coupon.active
+        ? "停用"
+        : "啟用";
+
+    const confirmed =
+      window.confirm(
+        `確定要${action}優惠券「${coupon.code}」嗎？`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await toggleCoupon(
+        coupon.id
+      );
+    } catch (error) {
+      console.error(
+        `${action}優惠券失敗：`,
+        error
+      );
+
+      alert(
+        `${action}優惠券失敗，請稍後再試。`
+      );
+    }
+  }
+
+  // ===================================================
+  // Test Use
+  // ===================================================
+
+  async function handleTestUse(
+    coupon: Coupon
+  ) {
+    const status =
+      getCouponStatus(coupon);
+
+    if (status !== "使用中") {
+      alert(
+        `目前優惠券狀態為「${status}」，無法測試使用。`
+      );
+      return;
+    }
+
+    if (
+      coupon.usageLimit !== null &&
+      coupon.usageLimit !== undefined &&
+      coupon.usedCount >=
+        coupon.usageLimit
     ) {
-      setCoupons(
-        (prevCoupons) =>
-          prevCoupons.map(
-            (coupon) =>
-              coupon.id === id
-                ? {
-                    ...coupon,
-
-                    status:
-                      coupon.status ===
-                      "啟用"
-                        ? "停用"
-                        : "啟用",
-                  }
-                : coupon
-          )
+      alert(
+        "優惠券已達使用次數上限"
       );
+      return;
     }
 
-    // ===================================================
-    // 測試增加使用次數
-    // ===================================================
+    const confirmed =
+      window.confirm(
+        `確定要測試使用優惠券「${coupon.code}」嗎？\n\n目前使用次數：${coupon.usedCount}`
+      );
 
-    function handleTestUse(
-      id: string
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await increaseCouponUsage(
+        coupon.id
+      );
+
+      alert("測試使用成功");
+    } catch (error) {
+      console.error(
+        "更新使用次數失敗：",
+        error
+      );
+
+      alert(
+        "更新使用次數失敗，請稍後再試。"
+      );
+    }
+  }
+
+  // ===================================================
+  // Initialize Date
+  // ===================================================
+
+  useEffect(() => {
+    if (
+      !form.startDate ||
+      !form.endDate
     ) {
-      const coupon =
-        coupons.find(
-          (item) =>
-            item.id === id
-        );
-
-      if (!coupon) {
-        return;
-      }
-
-      if (
-        coupon.status !==
-        "啟用"
-      ) {
-        alert(
-          "此優惠券目前已停用"
-        );
-        return;
-      }
-
-      if (
-        coupon.usageLimit !==
-          null &&
-        coupon.usedCount >=
-          coupon.usageLimit
-      ) {
-        alert(
-          "此優惠券使用次數已達上限"
-        );
-        return;
-      }
-
-      setCoupons(
-        (prevCoupons) =>
-          prevCoupons.map(
-            (item) =>
-              item.id === id
-                ? {
-                    ...item,
-
-                    usedCount:
-                      item.usedCount +
-                      1,
-                  }
-                : item
-          )
-      );
+      setForm((prev) => ({
+        ...prev,
+        startDate:
+          prev.startDate ||
+          getToday(),
+        endDate:
+          prev.endDate ||
+          getToday(),
+      }));
     }
+  }, [
+    form.startDate,
+    form.endDate,
+  ]);
 
-    // ===================================================
-    // 初始化表單
-    // ===================================================
+  // ===================================================
+  // UI
+  // ===================================================
 
-    useEffect(() => {
-      setForm({
-        ...emptyForm,
-        startDate: getToday(),
-        endDate: getToday(),
-      });
-    }, []);
+  return (
+    <div className="space-y-6">
 
-    // ===================================================
-    // Render
-    // ===================================================
+      {/* Header */}
 
-    return (
-      <div className="mx-auto max-w-7xl">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
-        {/* =================================================
-            Header
-        ================================================= */}
+        <div>
+          <h1 className="text-2xl font-bold text-white">
+            優惠券管理
+          </h1>
 
-        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <p className="mt-1 text-sm text-gray-300">
+            管理優惠券、折扣活動與使用狀態
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleAdd}
+          className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-gray-200"
+        >
+          ＋ 新增優惠券
+        </button>
+
+      </div>
+
+      {/* Statistics */}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+          <div className="text-sm text-gray-300">
+            優惠券總數
+          </div>
+
+          <div className="mt-2 text-3xl font-bold text-white">
+            {totalCoupons}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+          <div className="text-sm text-gray-300">
+            啟用中
+          </div>
+
+          <div className="mt-2 text-3xl font-bold text-green-400">
+            {activeCoupons}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+          <div className="text-sm text-gray-300">
+            可使用
+          </div>
+
+          <div className="mt-2 text-3xl font-bold text-blue-400">
+            {availableCoupons}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+          <div className="text-sm text-gray-300">
+            累計使用次數
+          </div>
+
+          <div className="mt-2 text-3xl font-bold text-purple-400">
+            {totalUsed}
+          </div>
+        </div>
+
+      </div>
+
+      {/* Form */}
+
+      <form
+        onSubmit={handleSubmit}
+        className="rounded-2xl border border-white/10 bg-white/[0.04] p-6"
+      >
+
+        <div className="mb-6 flex items-center justify-between">
 
           <div>
-            <h1 className="text-4xl font-bold text-gray-900">
-              優惠券管理
-            </h1>
-
-            <p className="mt-2 text-gray-600">
-              建立、管理與追蹤商店優惠券
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleAdd}
-            className="
-              rounded-xl
-              bg-black
-              px-6
-              py-3
-              font-semibold
-              text-white
-              transition
-              hover:bg-gray-800
-            "
-          >
-            ＋ 新增優惠券
-          </button>
-
-        </div>
-
-        {/* =================================================
-            Statistics
-        ================================================= */}
-
-        <div className="
-          mb-8
-          grid
-          grid-cols-1
-          gap-5
-          sm:grid-cols-2
-          lg:grid-cols-4
-        ">
-
-          <div className="
-            rounded-2xl
-            border
-            bg-white
-            p-6
-            shadow-sm
-          ">
-            <p className="text-gray-600">
-              🎫 優惠券總數
-            </p>
-
-            <h2 className="
-              mt-2
-              text-3xl
-              font-bold
-              text-gray-900
-            ">
-              {totalCoupons}
+            <h2 className="text-lg font-semibold text-white">
+              {editingId
+                ? "編輯優惠券"
+                : "新增優惠券"}
             </h2>
-          </div>
 
-          <div className="
-            rounded-2xl
-            border
-            bg-white
-            p-6
-            shadow-sm
-          ">
-            <p className="text-gray-600">
-              ✅ 已啟用
+            <p className="mt-1 text-sm text-gray-300">
+              優惠券資料會直接儲存至 Supabase
             </p>
-
-            <h2 className="
-              mt-2
-              text-3xl
-              font-bold
-              text-green-600
-            ">
-              {activeCoupons}
-            </h2>
           </div>
 
-          <div className="
-            rounded-2xl
-            border
-            border-blue-200
-            bg-blue-50
-            p-6
-          ">
-            <p className="text-blue-700">
-              🟢 目前可使用
-            </p>
-
-            <h2 className="
-              mt-2
-              text-3xl
-              font-bold
-              text-blue-700
-            ">
-              {availableCoupons}
-            </h2>
-          </div>
-
-          <div className="
-            rounded-2xl
-            border
-            border-purple-200
-            bg-purple-50
-            p-6
-          ">
-            <p className="text-purple-700">
-              📊 累計使用次數
-            </p>
-
-            <h2 className="
-              mt-2
-              text-3xl
-              font-bold
-              text-purple-700
-            ">
-              {totalUsed}
-            </h2>
-          </div>
-
-        </div>
-
-        {/* =================================================
-            Form
-        ================================================= */}
-
-        <div className="
-          mb-8
-          rounded-2xl
-          border
-          bg-white
-          p-6
-          shadow-sm
-        ">
-
-          <div className="
-            mb-6
-            flex
-            items-center
-            justify-between
-          ">
-
-            <div>
-              <h2 className="
-                text-2xl
-                font-bold
-                text-gray-900
-              ">
-                {editingId !== null
-                  ? "編輯優惠券"
-                  : "新增優惠券"}
-              </h2>
-
-              <p className="
-                mt-1
-                text-gray-600
-              ">
-                {editingId !== null
-                  ? "修改優惠券設定"
-                  : "建立新的優惠券"}
-              </p>
-            </div>
-
-            {editingId !== null && (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="
-                  font-semibold
-                  text-gray-600
-                  hover:text-black
-                "
-              >
-                取消編輯
-              </button>
-            )}
-
-          </div>
-
-          <form
-            onSubmit={handleSubmit}
-            className="
-              grid
-              grid-cols-1
-              gap-5
-              md:grid-cols-2
-            "
-          >
-
-            {/* 代碼 */}
-
-            <div>
-              <label className="
-                mb-2
-                block
-                font-semibold
-                text-gray-800
-              ">
-                優惠券代碼
-              </label>
-
-              <input
-                value={form.code}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    code:
-                      e.target.value.toUpperCase(),
-                  })
-                }
-                placeholder="例如：WELCOME100"
-                className="
-                  w-full
-                  rounded-xl
-                  border
-                  border-gray-300
-                  px-4
-                  py-3
-                  font-mono
-                  text-gray-900
-                  uppercase
-                  focus:outline-none
-                  focus:ring-2
-                  focus:ring-black
-                "
-              />
-            </div>
-
-            {/* 名稱 */}
-
-            <div>
-              <label className="
-                mb-2
-                block
-                font-semibold
-                text-gray-800
-              ">
-                優惠券名稱
-              </label>
-
-              <input
-                value={form.name}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    name:
-                      e.target.value,
-                  })
-                }
-                placeholder="例如：新會員折 100 元"
-                className="
-                  w-full
-                  rounded-xl
-                  border
-                  border-gray-300
-                  px-4
-                  py-3
-                  text-gray-900
-                  focus:outline-none
-                  focus:ring-2
-                  focus:ring-black
-                "
-              />
-            </div>
-
-            {/* 折扣類型 */}
-
-            <div>
-              <label className="
-                mb-2
-                block
-                font-semibold
-                text-gray-800
-              ">
-                折扣類型
-              </label>
-
-              <select
-                value={form.type}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    type:
-                      e.target.value ===
-                      "fixed"
-                        ? "fixed"
-                        : "percentage",
-                  })
-                }
-                className="
-                  w-full
-                  rounded-xl
-                  border
-                  border-gray-300
-                  bg-white
-                  px-4
-                  py-3
-                  text-gray-900
-                  focus:outline-none
-                  focus:ring-2
-                  focus:ring-black
-                "
-              >
-                <option value="percentage">
-                  百分比折扣
-                </option>
-
-                <option value="fixed">
-                  固定金額折扣
-                </option>
-              </select>
-            </div>
-
-            {/* 折扣數值 */}
-
-            <div>
-              <label className="
-                mb-2
-                block
-                font-semibold
-                text-gray-800
-              ">
-                {form.type ===
-                "percentage"
-                  ? "折扣百分比"
-                  : "折扣金額"}
-              </label>
-
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  max={
-                    form.type ===
-                    "percentage"
-                      ? 100
-                      : undefined
-                  }
-                  value={form.value}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      value:
-                        e.target.value,
-                    })
-                  }
-                  placeholder={
-                    form.type ===
-                    "percentage"
-                      ? "例如：10"
-                      : "例如：100"
-                  }
-                  className="
-                    w-full
-                    rounded-xl
-                    border
-                    border-gray-300
-                    px-4
-                    py-3
-                    text-gray-900
-                    focus:outline-none
-                    focus:ring-2
-                    focus:ring-black
-                  "
-                />
-
-                <span className="
-                  absolute
-                  right-4
-                  top-1/2
-                  -translate-y-1/2
-                  text-gray-500
-                ">
-                  {form.type ===
-                  "percentage"
-                    ? "%"
-                    : "元"}
-                </span>
-              </div>
-            </div>
-
-            {/* 最低消費 */}
-
-            <div>
-              <label className="
-                mb-2
-                block
-                font-semibold
-                text-gray-800
-              ">
-                最低消費
-              </label>
-
-              <input
-                type="number"
-                min="0"
-                value={form.minAmount}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    minAmount:
-                      e.target.value,
-                  })
-                }
-                placeholder="0 代表不限"
-                className="
-                  w-full
-                  rounded-xl
-                  border
-                  border-gray-300
-                  px-4
-                  py-3
-                  text-gray-900
-                  focus:outline-none
-                  focus:ring-2
-                  focus:ring-black
-                "
-              />
-            </div>
-
-            {/* 最大折扣 */}
-
-            <div>
-              <label className="
-                mb-2
-                block
-                font-semibold
-                text-gray-800
-              ">
-                最大折扣金額
-              </label>
-
-              <input
-                type="number"
-                min="0"
-                value={form.maxDiscount}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    maxDiscount:
-                      e.target.value,
-                  })
-                }
-                placeholder="留空代表不限"
-                disabled={
-                  form.type ===
-                  "fixed"
-                }
-                className="
-                  w-full
-                  rounded-xl
-                  border
-                  border-gray-300
-                  px-4
-                  py-3
-                  text-gray-900
-                  disabled:bg-gray-100
-                  disabled:text-gray-400
-                  focus:outline-none
-                  focus:ring-2
-                  focus:ring-black
-                "
-              />
-            </div>
-
-            {/* 使用次數 */}
-
-            <div>
-              <label className="
-                mb-2
-                block
-                font-semibold
-                text-gray-800
-              ">
-                使用次數上限
-              </label>
-
-              <input
-                type="number"
-                min="1"
-                value={form.usageLimit}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    usageLimit:
-                      e.target.value,
-                  })
-                }
-                placeholder="留空代表不限"
-                className="
-                  w-full
-                  rounded-xl
-                  border
-                  border-gray-300
-                  px-4
-                  py-3
-                  text-gray-900
-                  focus:outline-none
-                  focus:ring-2
-                  focus:ring-black
-                "
-              />
-            </div>
-
-            {/* 狀態 */}
-
-            <div>
-              <label className="
-                mb-2
-                block
-                font-semibold
-                text-gray-800
-              ">
-                優惠券狀態
-              </label>
-
-              <select
-                value={form.status}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    status:
-                      e.target.value ===
-                      "停用"
-                        ? "停用"
-                        : "啟用",
-                  })
-                }
-                className="
-                  w-full
-                  rounded-xl
-                  border
-                  border-gray-300
-                  bg-white
-                  px-4
-                  py-3
-                  text-gray-900
-                  focus:outline-none
-                  focus:ring-2
-                  focus:ring-black
-                "
-              >
-                <option value="啟用">
-                  啟用
-                </option>
-
-                <option value="停用">
-                  停用
-                </option>
-              </select>
-            </div>
-
-            {/* 開始日期 */}
-
-            <div>
-              <label className="
-                mb-2
-                block
-                font-semibold
-                text-gray-800
-              ">
-                開始日期
-              </label>
-
-              <input
-                type="date"
-                value={form.startDate}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    startDate:
-                      e.target.value,
-                  })
-                }
-                className="
-                  w-full
-                  rounded-xl
-                  border
-                  border-gray-300
-                  px-4
-                  py-3
-                  text-gray-900
-                  focus:outline-none
-                  focus:ring-2
-                  focus:ring-black
-                "
-              />
-            </div>
-
-            {/* 結束日期 */}
-
-            <div>
-              <label className="
-                mb-2
-                block
-                font-semibold
-                text-gray-800
-              ">
-                結束日期
-              </label>
-
-              <input
-                type="date"
-                value={form.endDate}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    endDate:
-                      e.target.value,
-                  })
-                }
-                className="
-                  w-full
-                  rounded-xl
-                  border
-                  border-gray-300
-                  px-4
-                  py-3
-                  text-gray-900
-                  focus:outline-none
-                  focus:ring-2
-                  focus:ring-black
-                "
-              />
-            </div>
-
-            {/* 按鈕 */}
-
-            <div className="
-              flex
-              gap-3
-              md:col-span-2
-            ">
-              <button
-                type="submit"
-                className="
-                  rounded-xl
-                  bg-black
-                  px-7
-                  py-3
-                  font-semibold
-                  text-white
-                  transition
-                  hover:bg-gray-800
-                "
-              >
-                {editingId !== null
-                  ? "更新優惠券"
-                  : "新增優惠券"}
-              </button>
-
-              {editingId !== null && (
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="
-                    rounded-xl
-                    border
-                    border-gray-300
-                    px-7
-                    py-3
-                    font-semibold
-                    text-gray-800
-                    hover:bg-gray-100
-                  "
-                >
-                  取消
-                </button>
-              )}
-            </div>
-
-          </form>
-        </div>
-
-        {/* =================================================
-            Search
-        ================================================= */}
-
-        <div className="
-          mb-6
-          rounded-2xl
-          border
-          bg-white
-          p-6
-          shadow-sm
-        ">
-
-          <div className="
-            flex
-            flex-col
-            gap-4
-            lg:flex-row
-          ">
-
-            <input
-              value={search}
-              onChange={(e) =>
-                setSearch(
-                  e.target.value
-                )
-              }
-              placeholder="🔍 搜尋優惠券代碼或名稱..."
-              className="
-                flex-1
-                rounded-xl
-                border
-                border-gray-300
-                px-4
-                py-3
-                text-gray-900
-                focus:outline-none
-                focus:ring-2
-                focus:ring-black
-              "
-            />
-
-            <div className="
-              flex
-              flex-wrap
-              gap-2
-            ">
-
-              {(
-                [
-                  "全部",
-                  "啟用",
-                  "停用",
-                ] as const
-              ).map(
-                (status) => (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() =>
-                      setStatusFilter(
-                        status
-                      )
-                    }
-                    className={`
-                      rounded-xl
-                      border
-                      px-5
-                      py-2
-                      font-semibold
-                      ${
-                        statusFilter ===
-                        status
-                          ? "bg-black text-white"
-                          : "bg-white text-gray-800 hover:bg-gray-100"
-                      }
-                    `}
-                  >
-                    {status}
-                  </button>
-                )
-              )}
-
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* =================================================
-            Coupon List
-        ================================================= */}
-
-        <div className="
-          overflow-hidden
-          rounded-2xl
-          border
-          bg-white
-          shadow-sm
-        ">
-
-          <div className="
-            flex
-            items-center
-            justify-between
-            border-b
-            p-6
-          ">
-            <div>
-              <h2 className="
-                text-2xl
-                font-bold
-                text-gray-900
-              ">
-                優惠券列表
-              </h2>
-
-              <p className="
-                mt-1
-                text-gray-600
-              ">
-                顯示{" "}
-                {filteredCoupons.length}{" "}
-                張優惠券
-              </p>
-            </div>
-          </div>
-
-          {filteredCoupons.length ===
-          0 ? (
-            <div className="
-              p-12
-              text-center
-            ">
-              <div className="
-                mb-4
-                text-5xl
-              ">
-                🎫
-              </div>
-
-              <h3 className="
-                text-xl
-                font-bold
-                text-gray-900
-              ">
-                目前沒有優惠券
-              </h3>
-
-              <p className="
-                mt-2
-                text-gray-600
-              ">
-                請新增一張優惠券開始使用。
-              </p>
-            </div>
-          ) : (
-            <div className="
-              divide-y
-              divide-gray-200
-            ">
-
-              {filteredCoupons.map(
-                (coupon) => {
-                  const status =
-                    getCouponStatus(
-                      coupon
-                    );
-
-                  const usageText =
-                    coupon.usageLimit ===
-                    null
-                      ? `${coupon.usedCount} / 不限`
-                      : `${coupon.usedCount} / ${coupon.usageLimit}`;
-
-                  return (
-                    <div
-                      key={coupon.id}
-                      className="
-                        p-6
-                        transition
-                        hover:bg-gray-50
-                      "
-                    >
-
-                      <div className="
-                        flex
-                        flex-col
-                        gap-6
-                        xl:flex-row
-                        xl:items-center
-                      ">
-
-                        {/* Coupon */}
-
-                        <div className="
-                          min-w-0
-                          flex-1
-                        ">
-
-                          <div className="
-                            flex
-                            flex-wrap
-                            items-center
-                            gap-3
-                          ">
-
-                            <span className="
-                              rounded-lg
-                              bg-gray-900
-                              px-3
-                              py-1.5
-                              font-mono
-                              text-sm
-                              font-bold
-                              text-white
-                            ">
-                              {coupon.code}
-                            </span>
-
-                            <span className={`
-                              rounded-full
-                              border
-                              px-3
-                              py-1
-                              text-sm
-                              font-semibold
-                              ${status.className}
-                            `}>
-                              {status.text}
-                            </span>
-
-                          </div>
-
-                          <h3 className="
-                            mt-3
-                            text-xl
-                            font-bold
-                            text-gray-900
-                          ">
-                            {coupon.name}
-                          </h3>
-
-                          <div className="
-                            mt-3
-                            flex
-                            flex-wrap
-                            gap-2
-                            text-sm
-                          ">
-
-                            <span className="
-                              rounded-lg
-                              bg-gray-100
-                              px-3
-                              py-1
-                              text-gray-700
-                            ">
-                              {coupon.type ===
-                              "percentage"
-                                ? `折 ${coupon.value}%`
-                                : `折 ${formatMoney(
-                                    coupon.value
-                                  )}`}
-                            </span>
-
-                            <span className="
-                              rounded-lg
-                              bg-gray-100
-                              px-3
-                              py-1
-                              text-gray-700
-                            ">
-                              滿{" "}
-                              {formatMoney(
-                                coupon.minAmount
-                              )}{" "}
-                              可用
-                            </span>
-
-                            {coupon.maxDiscount !==
-                              null &&
-                              coupon.type ===
-                                "percentage" && (
-                                <span className="
-                                  rounded-lg
-                                  bg-gray-100
-                                  px-3
-                                  py-1
-                                  text-gray-700
-                                ">
-                                  最高折{" "}
-                                  {formatMoney(
-                                    coupon.maxDiscount
-                                  )}
-                                </span>
-                              )}
-
-                          </div>
-
-                          <p className="
-                            mt-3
-                            text-sm
-                            text-gray-500
-                          ">
-                            有效期間：
-                            {" "}
-                            {coupon.startDate}
-                            {" "}
-                            ～{" "}
-                            {coupon.endDate}
-                          </p>
-
-                        </div>
-
-                        {/* Usage */}
-
-                        <div className="
-                          min-w-[130px]
-                        ">
-                          <p className="
-                            text-sm
-                            text-gray-500
-                          ">
-                            使用次數
-                          </p>
-
-                          <p className="
-                            mt-1
-                            text-xl
-                            font-bold
-                            text-gray-900
-                          ">
-                            {usageText}
-                          </p>
-                        </div>
-
-                        {/* Actions */}
-
-                        <div className="
-                          flex
-                          flex-wrap
-                          gap-2
-                        ">
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleTestUse(
-                                coupon.id
-                              )
-                            }
-                            className="
-                              rounded-xl
-                              bg-purple-600
-                              px-4
-                              py-2
-                              font-semibold
-                              text-white
-                              transition
-                              hover:bg-purple-700
-                            "
-                          >
-                            測試使用
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              toggleStatus(
-                                coupon.id
-                              )
-                            }
-                            className={`
-                              rounded-xl
-                              px-4
-                              py-2
-                              font-semibold
-                              text-white
-                              transition
-                              ${
-                                coupon.status ===
-                                "啟用"
-                                  ? "bg-orange-500 hover:bg-orange-600"
-                                  : "bg-green-600 hover:bg-green-700"
-                              }
-                            `}
-                          >
-                            {coupon.status ===
-                            "啟用"
-                              ? "停用"
-                              : "啟用"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleEdit(
-                                coupon
-                              )
-                            }
-                            className="
-                              rounded-xl
-                              bg-blue-600
-                              px-4
-                              py-2
-                              font-semibold
-                              text-white
-                              transition
-                              hover:bg-blue-700
-                            "
-                          >
-                            編輯
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleDelete(
-                                coupon.id
-                              )
-                            }
-                            className="
-                              rounded-xl
-                              bg-red-600
-                              px-4
-                              py-2
-                              font-semibold
-                              text-white
-                              transition
-                              hover:bg-red-700
-                            "
-                          >
-                            刪除
-                          </button>
-
-                        </div>
-
-                      </div>
-
-                    </div>
-                  );
-                }
-              )}
-
-            </div>
+          {editingId && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="text-sm text-gray-200 transition hover:text-white"
+            >
+              取消編輯
+            </button>
           )}
 
         </div>
 
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+
+          {/* Code */}
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-200">
+              優惠券代碼
+            </label>
+
+            <input
+              type="text"
+              value={form.code}
+              onChange={(e) =>
+                updateForm(
+                  "code",
+                  e.currentTarget.value.toUpperCase()
+                )
+              }
+              placeholder="例如：WELCOME100"
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition placeholder:text-gray-500 focus:border-white/30"
+            />
+          </div>
+
+          {/* Name */}
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-200">
+              優惠券名稱
+            </label>
+
+            <input
+              type="text"
+              value={form.name}
+              onChange={(e) =>
+                updateForm(
+                  "name",
+                  e.currentTarget.value
+                )
+              }
+              placeholder="例如：新會員折扣"
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition placeholder:text-gray-500 focus:border-white/30"
+            />
+          </div>
+
+          {/* Type */}
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-200">
+              折扣類型
+            </label>
+
+            <select
+              value={form.type}
+              onChange={(e) =>
+                updateForm(
+                  "type",
+                  e.currentTarget.value
+                )
+              }
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/30"
+            >
+              <option
+                value="percentage"
+                className="bg-gray-900 text-white"
+              >
+                百分比折扣
+              </option>
+
+              <option
+                value="fixed"
+                className="bg-gray-900 text-white"
+              >
+                固定金額折扣
+              </option>
+            </select>
+          </div>
+
+          {/* Value */}
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-200">
+              {form.type ===
+              "percentage"
+                ? "折扣百分比"
+                : "折扣金額"}
+            </label>
+
+            <div className="relative">
+
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                inputMode="decimal"
+                value={form.value}
+                onChange={(e) =>
+                  updateForm(
+                    "value",
+                    e.currentTarget.value
+                  )
+                }
+                placeholder={
+                  form.type ===
+                  "percentage"
+                    ? "例如：10"
+                    : "例如：100"
+                }
+                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 pr-12 text-white outline-none transition placeholder:text-gray-500 focus:border-white/30"
+              />
+
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-200">
+                {form.type ===
+                "percentage"
+                  ? "%"
+                  : "元"}
+              </span>
+
+            </div>
+
+            <p className="mt-1 text-xs text-gray-300">
+              {form.type ===
+              "percentage"
+                ? "例如輸入 10 代表 10% OFF"
+                : "例如輸入 100 代表折 NT$100"}
+            </p>
+          </div>
+
+          {/* Min Amount */}
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-200">
+              最低消費金額
+            </label>
+
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={form.minAmount}
+              onChange={(e) =>
+                updateForm(
+                  "minAmount",
+                  e.currentTarget.value
+                )
+              }
+              placeholder="0"
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition placeholder:text-gray-500 focus:border-white/30"
+            />
+          </div>
+
+          {/* Max Discount */}
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-200">
+              最高折抵金額
+            </label>
+
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={form.maxDiscount}
+              onChange={(e) =>
+                updateForm(
+                  "maxDiscount",
+                  e.currentTarget.value
+                )
+              }
+              disabled={
+                form.type === "fixed"
+              }
+              placeholder={
+                form.type === "fixed"
+                  ? "固定金額不適用"
+                  : "例如：300"
+              }
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-40 focus:border-white/30"
+            />
+
+            {form.type ===
+              "percentage" && (
+              <p className="mt-1 text-xs text-gray-300">
+                例如 10% 折扣最多只折抵 NT$300
+              </p>
+            )}
+          </div>
+
+          {/* Usage Limit */}
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-200">
+              使用次數上限
+            </label>
+
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={form.usageLimit}
+              onChange={(e) =>
+                updateForm(
+                  "usageLimit",
+                  e.currentTarget.value
+                )
+              }
+              placeholder="留空代表不限次數"
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition placeholder:text-gray-500 focus:border-white/30"
+            />
+          </div>
+
+          {/* Status */}
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-200">
+              狀態
+            </label>
+
+            <select
+              value={form.status}
+              onChange={(e) =>
+                updateForm(
+                  "status",
+                  e.currentTarget.value as CouponStatus
+                )
+              }
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/30"
+            >
+              <option
+                value="啟用"
+                className="bg-gray-900 text-white"
+              >
+                啟用
+              </option>
+
+              <option
+                value="停用"
+                className="bg-gray-900 text-white"
+              >
+                停用
+              </option>
+            </select>
+          </div>
+
+          {/* Start Date */}
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-200">
+              開始日期
+            </label>
+
+            <input
+              type="date"
+              value={form.startDate}
+              onChange={(e) =>
+                updateForm(
+                  "startDate",
+                  e.currentTarget.value
+                )
+              }
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/30"
+            />
+          </div>
+
+          {/* End Date */}
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-200">
+              結束日期
+            </label>
+
+            <input
+              type="date"
+              value={form.endDate}
+              onChange={(e) =>
+                updateForm(
+                  "endDate",
+                  e.currentTarget.value
+                )
+              }
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/30"
+            />
+          </div>
+
+        </div>
+
+        {/* Form Buttons */}
+
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+
+          <button
+            type="button"
+            onClick={resetForm}
+            className="rounded-xl border border-white/10 px-5 py-3 text-sm font-medium text-gray-100 transition hover:bg-white/5 hover:text-white"
+          >
+            清除
+          </button>
+
+          <button
+            type="submit"
+            className="rounded-xl bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-gray-200"
+          >
+            {editingId
+              ? "儲存修改"
+              : "新增優惠券"}
+          </button>
+
+        </div>
+      </form>
+
+      {/* Search / Filter */}
+
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+
+          <div className="relative flex-1">
+
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-200">
+              🔍
+            </span>
+
+            <input
+              type="text"
+              value={search}
+              onChange={(e) =>
+                setSearch(
+                  e.currentTarget.value
+                )
+              }
+              placeholder="搜尋優惠券代碼、名稱..."
+              className="w-full rounded-xl border border-white/10 bg-black/20 py-3 pl-11 pr-4 text-white outline-none transition placeholder:text-gray-500 focus:border-white/30"
+            />
+
+          </div>
+
+          <div className="flex gap-2">
+
+            {(
+              [
+                "全部",
+                "啟用",
+                "停用",
+              ] as const
+            ).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() =>
+                  setStatusFilter(
+                    filter
+                  )
+                }
+                className={`rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                  statusFilter ===
+                  filter
+                    ? "bg-white text-black"
+                    : "border border-white/10 text-gray-100 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                {filter}
+              </button>
+            ))}
+
+          </div>
+
+        </div>
       </div>
-    );
-  }
+
+      {/* Coupon List */}
+
+      <div className="space-y-4">
+
+        {filteredCoupons.length ===
+        0 ? (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-12 text-center">
+
+            <div className="text-4xl">
+              🎟️
+            </div>
+
+            <p className="mt-4 text-gray-100">
+              沒有找到優惠券
+            </p>
+
+            <p className="mt-1 text-sm text-gray-500">
+              可以新增優惠券或調整搜尋條件
+            </p>
+
+          </div>
+        ) : (
+          filteredCoupons.map(
+            (coupon) => {
+              const status =
+                getCouponStatus(
+                  coupon
+                );
+
+              return (
+                <div
+                  key={coupon.id}
+                  className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition hover:border-white/20"
+                >
+
+                  <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+
+                    {/* Main */}
+
+                    <div className="min-w-0 flex-1">
+
+                      <div className="flex flex-wrap items-center gap-3">
+
+                        <span className="rounded-lg bg-white/10 px-3 py-1.5 font-mono text-sm font-bold tracking-wide text-white">
+                          {coupon.code}
+                        </span>
+
+                        <span
+                          className={`rounded-full border px-3 py-1 text-xs font-medium ${getStatusStyle(
+                            status
+                          )}`}
+                        >
+                          {status}
+                        </span>
+
+                      </div>
+
+                      <h3 className="mt-3 text-lg font-semibold text-white">
+                        {coupon.name}
+                      </h3>
+
+                      <div className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3 lg:grid-cols-5">
+
+                        {/* Discount */}
+
+                        <div>
+                          <div className="font-medium text-gray-400">
+                            折扣
+                          </div>
+
+                          <div className="mt-1 font-medium text-white">
+                            {coupon.type ===
+                            "percentage"
+                              ? `${coupon.value}% OFF`
+                              : formatMoney(
+                                  coupon.value
+                                )}
+                          </div>
+                        </div>
+
+                        {/* Min Amount */}
+
+                        <div>
+                          <div className="font-medium text-gray-400">
+                            最低消費
+                          </div>
+
+                          <div className="mt-1 font-medium text-white">
+                            {formatMoney(
+                              coupon.minAmount
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Max Discount */}
+
+                        <div>
+                          <div className="font-medium text-gray-400">
+                            最高折抵
+                          </div>
+
+                          <div className="mt-1 font-medium text-white">
+                            {coupon.maxDiscount !==
+                              null &&
+                            coupon.maxDiscount !==
+                              undefined &&
+                            coupon.type ===
+                              "percentage"
+                              ? formatMoney(
+                                  coupon.maxDiscount
+                                )
+                              : "—"}
+                          </div>
+                        </div>
+
+                        {/* Date */}
+
+                        <div>
+                          <div className="font-medium text-gray-400">
+                            有效期間
+                          </div>
+
+                          <div className="mt-1 font-medium text-white">
+                            {coupon.startDate}
+
+                            <span className="mx-1 text-gray-400">
+                              →
+                            </span>
+
+                            {coupon.endDate}
+                          </div>
+                        </div>
+
+                        {/* Usage */}
+
+                        <div>
+                          <div className="font-medium text-gray-400">
+                            使用次數
+                          </div>
+
+                          <div className="mt-1 font-medium text-white">
+                            {coupon.usedCount}
+
+                            {coupon.usageLimit !==
+                              null &&
+                            coupon.usageLimit !==
+                              undefined
+                              ? ` / ${coupon.usageLimit}`
+                              : " / 無上限"}
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+
+                    <div className="flex flex-wrap gap-2 xl:w-auto xl:justify-end">
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleTestUse(
+                            coupon
+                          )
+                        }
+                        disabled={
+                          status !==
+                          "使用中"
+                        }
+                        className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-gray-100 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                      >
+                        測試使用
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleToggle(
+                            coupon
+                          )
+                        }
+                        className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-gray-100 transition hover:bg-white/5 hover:text-white"
+                      >
+                        {coupon.active
+                          ? "停用"
+                          : "啟用"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleEdit(
+                            coupon
+                          )
+                        }
+                        className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-gray-100 transition hover:bg-white/5 hover:text-white"
+                      >
+                        編輯
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDelete(
+                            coupon
+                          )
+                        }
+                        className="rounded-xl border border-red-500/20 px-4 py-2.5 text-sm font-medium text-red-400 transition hover:bg-red-500/10 hover:text-red-300"
+                      >
+                        刪除
+                      </button>
+
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+          )
+        )}
+
+      </div>
+    </div>
+  );
+}
