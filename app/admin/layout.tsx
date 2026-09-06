@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -14,47 +15,47 @@ export default function AdminLayout({
     {
       href: "/admin",
       label: "Dashboard",
-      icon: "??",
+      icon: "ğŸ“Š",
     },
     {
       href: "/admin/products",
-      label: "?†å?ç®¡ç?",
-      icon: "?“¦",
+      label: "å•†å“ç®¡ç†",
+      icon: "ğŸ“¦",
     },
     {
       href: "/admin/orders",
-      label: "è¨‚å–®ç®¡ç?",
-      icon: "??",
+      label: "è¨‚å–®ç®¡ç†",
+      icon: "ğŸ§¾",
     },
     {
       href: "/admin/inventory",
-      label: "åº«å?ç®¡ç?",
-      icon: "??",
+      label: "åº«å­˜ç®¡ç†",
+      icon: "ğŸ·ï¸",
     },
     {
       href: "/admin/inventory/logs",
-      label: "åº«å??°å?ç´€??,
-      icon: "?”ï?",
+      label: "åº«å­˜ç•°å‹•ç´€éŒ„",
+      icon: "ğŸ“‹",
     },
     {
       href: "/admin/inventory/stocktake",
-      label: "åº«å??¤é?",
-      icon: "??",
+      label: "åº«å­˜ç›¤é»",
+      icon: "ğŸ”",
     },
     {
       href: "/admin/members",
-      label: "?ƒå“¡ç®¡ç?",
-      icon: "?‘¤",
+      label: "æœƒå“¡ç®¡ç†",
+      icon: "ğŸ‘¥",
     },
     {
       href: "/admin/coupons",
-      label: "?ªæ???,
-      icon: "??ï¸?,
+      label: "å„ªæƒ åˆ¸ç®¡ç†",
+      icon: "ğŸŸï¸",
     },
     {
       href: "/admin/reports",
-      label: "?±è¡¨?†æ?",
-      icon: "??",
+      label: "å ±è¡¨åˆ†æ",
+      icon: "ğŸ“ˆ",
     },
   ];
 
@@ -63,10 +64,7 @@ export default function AdminLayout({
       return pathname === "/admin";
     }
 
-    return (
-      pathname === href ||
-      pathname.startsWith(`${href}/`)
-    );
+    return pathname === href || pathname.startsWith(`${href}/`);
   }
 
   return (
@@ -74,7 +72,6 @@ export default function AdminLayout({
       {/* =====================================================
           Header
       ===================================================== */}
-
       <header className="sticky top-0 z-50 border-b bg-white">
         <div
           className="
@@ -93,11 +90,7 @@ export default function AdminLayout({
           "
         >
           {/* Logo */}
-
-          <Link
-            href="/admin"
-            className="min-w-0 max-w-full"
-          >
+          <Link href="/admin" className="min-w-0 max-w-full">
             <div
               className="
                 truncate
@@ -112,12 +105,11 @@ export default function AdminLayout({
             </div>
 
             <div className="truncate text-xs text-gray-500 sm:text-sm">
-              ?»å?ç®¡ç?ç³»çµ±
+              å¾Œå°ç®¡ç†ç³»çµ±
             </div>
           </Link>
 
-          {/* ?å???*/}
-
+          {/* å›åˆ°å‰å° */}
           <Link
             href="/"
             className="
@@ -135,11 +127,11 @@ export default function AdminLayout({
             "
           >
             <span className="hidden sm:inline">
-              ?åˆ°?†å? ??
+              å›åˆ°å‰å°é¦–é  â†’
             </span>
 
             <span className="sm:hidden">
-              ?†å? ??
+              å‰å° â†’
             </span>
           </Link>
         </div>
@@ -148,22 +140,10 @@ export default function AdminLayout({
       {/* =====================================================
           Admin Body
       ===================================================== */}
-
-      <div
-        className="
-          mx-auto
-          w-full
-          max-w-7xl
-          min-w-0
-        "
-      >
+      <div className="mx-auto w-full max-w-7xl min-w-0">
         {/* ===================================================
             Mobile Navigation
-
-            ???è?ä¿®æ­£ï¼?
-            ?‹æ??¸å–®ä¸å?è·?main ?¾åœ¨?Œä???flex row
         =================================================== */}
-
         <div className="w-full min-w-0 border-b bg-white lg:hidden">
           <div
             className="
@@ -179,8 +159,7 @@ export default function AdminLayout({
             "
           >
             {menuItems.map((item) => {
-              const active =
-                isActive(item.href);
+              const active = isActive(item.href);
 
               return (
                 <Link
@@ -221,11 +200,8 @@ export default function AdminLayout({
 
         {/* ===================================================
             Desktop Layout
-
-            lg ä»¥ä?ï¼?
             Sidebar + Main Content
         =================================================== */}
-
         <div
           className="
             flex
@@ -237,7 +213,6 @@ export default function AdminLayout({
           {/* =================================================
               Desktop Sidebar
           ================================================= */}
-
           <aside
             className="
               hidden
@@ -250,23 +225,20 @@ export default function AdminLayout({
           >
             <div className="sticky top-16">
               {/* Admin Title */}
-
               <div className="border-b border-gray-700 px-5 py-6">
                 <h2 className="text-2xl font-bold text-white">
                   Admin
                 </h2>
 
                 <p className="mt-1 text-sm text-gray-400">
-                  Accessories å¾Œå°ç®¡ç?
+                  Accessories å¾Œå°ç®¡ç†
                 </p>
               </div>
 
               {/* Desktop Menu */}
-
               <nav className="p-3">
                 {menuItems.map((item) => {
-                  const active =
-                    isActive(item.href);
+                  const active = isActive(item.href);
 
                   return (
                     <Link
@@ -307,14 +279,7 @@ export default function AdminLayout({
 
           {/* =================================================
               Main Content
-
-              ???‹æ?ï¼?
-              å®Œæ•´ä½”æ»¿å¯¬åº¦
-
-              ??æ¡Œæ?ï¼?
-              Sidebar ?³å´?©é?ç©ºé?
           ================================================= */}
-
           <main
             className="
               w-full
