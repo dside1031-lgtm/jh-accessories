@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 
 import { useCart } from "@/components/CartProvider";
 import { useOrder } from "@/components/OrderProvider";
+import { useCoupon, type Coupon } from "@/components/CouponProvider";
 
 // =====================================================
 // 付款方式
@@ -32,6 +33,11 @@ export default function CheckoutPage() {
     addOrder,
   } = useOrder();
 
+  const {
+    validateCoupon,
+    increaseCouponUsage,
+  } = useCoupon();
+
   // =====================================================
   // 收件資料
   // =====================================================
@@ -48,6 +54,25 @@ export default function CheckoutPage() {
     useState<PaymentMethod>("貨到付款");
 
   // =====================================================
+  // 優惠券
+  // =====================================================
+
+  const [couponCode, setCouponCode] =
+    useState("");
+
+  const [appliedCoupon, setAppliedCoupon] =
+    useState<Coupon | null>(null);
+
+  const [couponDiscount, setCouponDiscount] =
+    useState(0);
+
+  const [couponMessage, setCouponMessage] =
+    useState("");
+
+  const [couponLoading, setCouponLoading] =
+    useState(false);
+
+  // =====================================================
   // 下單狀態
   // =====================================================
 
@@ -55,7 +80,7 @@ export default function CheckoutPage() {
     useState(false);
 
   // =====================================================
-  // 訂單總金額
+  // 商品總金額
   // =====================================================
 
   const total = useMemo(() => {
@@ -82,6 +107,17 @@ export default function CheckoutPage() {
   }, [cart]);
 
   // =====================================================
+  // 折扣後總金額
+  // =====================================================
+
+  const finalTotal = useMemo(() => {
+    return Math.max(
+      0,
+      total - couponDiscount
+    );
+  }, [total, couponDiscount]);
+
+  // =====================================================
   // 金額格式
   // =====================================================
 
@@ -89,6 +125,107 @@ export default function CheckoutPage() {
     return Number(price || 0).toLocaleString(
       "zh-TW"
     );
+  }
+
+  // =====================================================
+  // 套用優惠券
+  // =====================================================
+
+  async function handleApplyCoupon() {
+    const code = couponCode.trim();
+
+    if (!code) {
+      setCouponMessage(
+        "請輸入優惠券代碼。"
+      );
+      setAppliedCoupon(null);
+      setCouponDiscount(0);
+      return;
+    }
+
+    if (
+      !Number.isFinite(total) ||
+      total <= 0
+    ) {
+      setCouponMessage(
+        "目前訂單金額無法使用優惠券。"
+      );
+      return;
+    }
+
+    setCouponLoading(true);
+    setCouponMessage("");
+
+    try {
+      const result =
+        validateCoupon(
+          code,
+          total
+        );
+
+      if (
+        !result ||
+        !result.valid ||
+        !result.coupon
+      ) {
+        setAppliedCoupon(null);
+        setCouponDiscount(0);
+
+        setCouponMessage(
+          result?.message ||
+            "優惠券無法使用。"
+        );
+
+        return;
+      }
+
+      setAppliedCoupon(
+        result.coupon
+      );
+
+      setCouponDiscount(
+        Math.max(
+          0,
+          Number(
+            result.discount || 0
+          )
+        )
+      );
+
+      setCouponCode(
+        result.coupon.code
+      );
+
+      setCouponMessage(
+        result.message ||
+          "優惠券套用成功。"
+      );
+    } catch (error) {
+      console.error(
+        "套用優惠券失敗：",
+        error
+      );
+
+      setAppliedCoupon(null);
+      setCouponDiscount(0);
+
+      setCouponMessage(
+        "優惠券驗證失敗，請稍後再試。"
+      );
+    } finally {
+      setCouponLoading(false);
+    }
+  }
+
+  // =====================================================
+  // 移除優惠券
+  // =====================================================
+
+  function handleRemoveCoupon() {
+    setAppliedCoupon(null);
+    setCouponDiscount(0);
+    setCouponMessage("");
+    setCouponCode("");
   }
 
   // =====================================================
@@ -126,6 +263,14 @@ export default function CheckoutPage() {
       total <= 0
     ) {
       alert("訂單金額無效");
+      return false;
+    }
+
+    if (
+      !Number.isFinite(finalTotal) ||
+      finalTotal <= 0
+    ) {
+      alert("折扣後訂單金額無效");
       return false;
     }
 
@@ -205,6 +350,26 @@ export default function CheckoutPage() {
         throw new Error(
           "綠界付款資料不完整。"
         );
+      }
+
+      // -------------------------------------------------
+      // 優惠券使用次數
+      //
+      // ECPay 付款資料已成功建立後，
+      // 才增加優惠券使用次數。
+      // -------------------------------------------------
+
+      if (appliedCoupon) {
+        try {
+          await increaseCouponUsage(
+            appliedCoupon.id
+          );
+        } catch (couponError) {
+          console.error(
+            "更新優惠券使用次數失敗：",
+            couponError
+          );
+        }
       }
 
       // -------------------------------------------------
@@ -307,6 +472,70 @@ export default function CheckoutPage() {
 
     try {
       // =================================================
+      // 如果已套用優惠券
+      // 再次驗證一次
+      //
+      // 避免使用者停留太久，
+      // 優惠券在這期間失效或達到使用上限。
+      // =================================================
+
+      let currentCoupon =
+        appliedCoupon;
+
+      let currentDiscount =
+        couponDiscount;
+
+      if (appliedCoupon) {
+        const couponResult =
+          validateCoupon(
+            appliedCoupon.code,
+            total
+          );
+
+        if (
+          !couponResult ||
+          !couponResult.valid ||
+          !couponResult.coupon
+        ) {
+          alert(
+            couponResult?.message ||
+              "優惠券已無法使用，請重新確認。"
+          );
+
+          setAppliedCoupon(null);
+          setCouponDiscount(0);
+          setSubmitting(false);
+
+          return;
+        }
+
+        currentCoupon =
+          couponResult.coupon;
+
+        currentDiscount =
+          Math.max(
+            0,
+            Number(
+              couponResult.discount || 0
+            )
+          );
+
+        setAppliedCoupon(
+          couponResult.coupon
+        );
+
+        setCouponDiscount(
+          currentDiscount
+        );
+      }
+
+      const orderTotal =
+        Math.max(
+          0,
+          total - currentDiscount
+        );
+
+      // =================================================
       // 建立訂單商品
       // =================================================
 
@@ -360,7 +589,13 @@ export default function CheckoutPage() {
         items:
           orderItems,
 
-        total,
+        // -------------------------------------------------
+        // 重要：
+        // 訂單實際金額使用折扣後金額
+        // -------------------------------------------------
+
+        total:
+          orderTotal,
 
         totalQuantity,
 
@@ -381,7 +616,7 @@ export default function CheckoutPage() {
       // =================================================
 
       const result =
-       await addOrder(order);
+        await addOrder(order);
 
       // =================================================
       // 建立失敗
@@ -409,6 +644,23 @@ export default function CheckoutPage() {
         paymentMethod ===
         "貨到付款"
       ) {
+        // -------------------------------------------------
+        // 訂單建立成功後才增加使用次數
+        // -------------------------------------------------
+
+        if (currentCoupon) {
+          try {
+            await increaseCouponUsage(
+              currentCoupon.id
+            );
+          } catch (couponError) {
+            console.error(
+              "更新優惠券使用次數失敗：",
+              couponError
+            );
+          }
+        }
+
         clearCart();
 
         router.push(
@@ -909,6 +1161,263 @@ export default function CheckoutPage() {
                       "
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* 優惠券 */}
+
+              <div
+                className="
+                  rounded-2xl
+                  border
+                  bg-white
+                  p-4
+                  shadow-sm
+                  sm:p-6
+                "
+              >
+                <h2
+                  className="
+                    text-xl
+                    font-bold
+                    text-gray-900
+                  "
+                >
+                  優惠券
+                </h2>
+
+                <p
+                  className="
+                    mt-1
+                    text-sm
+                    text-gray-500
+                  "
+                >
+                  輸入優惠券代碼即可享有折扣。
+                </p>
+
+                <div className="mt-5">
+                  {appliedCoupon ? (
+                    <div
+                      className="
+                        rounded-xl
+                        border
+                        border-emerald-200
+                        bg-emerald-50
+                        p-4
+                      "
+                    >
+                      <div
+                        className="
+                          flex
+                          items-start
+                          justify-between
+                          gap-4
+                        "
+                      >
+                        <div className="min-w-0">
+                          <div
+                            className="
+                              flex
+                              flex-wrap
+                              items-center
+                              gap-2
+                            "
+                          >
+                            <span
+                              className="
+                                rounded-lg
+                                bg-emerald-600
+                                px-2.5
+                                py-1
+                                text-xs
+                                font-bold
+                                text-white
+                              "
+                            >
+                              {appliedCoupon.code}
+                            </span>
+
+                            <span
+                              className="
+                                text-sm
+                                font-bold
+                                text-emerald-900
+                              "
+                            >
+                              {appliedCoupon.name}
+                            </span>
+                          </div>
+
+                          <p
+                            className="
+                              mt-2
+                              text-sm
+                              text-emerald-700
+                            "
+                          >
+                            優惠券折扣：
+                            <span className="ml-1 font-bold">
+                              -NT${" "}
+                              {formatPrice(
+                                couponDiscount
+                              )}
+                            </span>
+                          </p>
+
+                          {couponMessage && (
+                            <p
+                              className="
+                                mt-1
+                                text-xs
+                                text-emerald-700
+                              "
+                            >
+                              {couponMessage}
+                            </p>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={
+                            handleRemoveCoupon
+                          }
+                          disabled={submitting}
+                          className="
+                            shrink-0
+                            rounded-lg
+                            border
+                            border-emerald-200
+                            bg-white
+                            px-3
+                            py-2
+                            text-xs
+                            font-bold
+                            text-emerald-700
+                            transition
+                            hover:bg-emerald-100
+                            disabled:cursor-not-allowed
+                            disabled:opacity-50
+                          "
+                        >
+                          移除
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div
+                        className="
+                          flex
+                          flex-col
+                          gap-3
+                          sm:flex-row
+                        "
+                      >
+                        <input
+                          type="text"
+                          value={couponCode}
+                          onChange={(event) => {
+                            setCouponCode(
+                              event.target.value.toUpperCase()
+                            );
+                            setCouponMessage("");
+                          }}
+                          onKeyDown={(event) => {
+                            if (
+                              event.key === "Enter"
+                            ) {
+                              event.preventDefault();
+
+                              if (
+                                !couponLoading &&
+                                !submitting
+                              ) {
+                                handleApplyCoupon();
+                              }
+                            }
+                          }}
+                          placeholder="請輸入優惠券代碼"
+                          disabled={
+                            submitting ||
+                            couponLoading
+                          }
+                          autoComplete="off"
+                          className="
+                            min-w-0
+                            flex-1
+                            rounded-xl
+                            border
+                            border-gray-300
+                            bg-white
+                            px-4
+                            py-3
+                            text-sm
+                            font-medium
+                            tracking-wide
+                            text-gray-900
+                            outline-none
+                            transition
+                            placeholder:text-gray-400
+                            focus:border-gray-900
+                            focus:ring-2
+                            focus:ring-gray-100
+                            disabled:bg-gray-100
+                          "
+                        />
+
+                        <button
+                          type="button"
+                          onClick={
+                            handleApplyCoupon
+                          }
+                          disabled={
+                            submitting ||
+                            couponLoading ||
+                            !couponCode.trim()
+                          }
+                          className="
+                            shrink-0
+                            rounded-xl
+                            bg-gray-900
+                            px-5
+                            py-3
+                            text-sm
+                            font-bold
+                            text-white
+                            transition
+                            hover:bg-gray-700
+                            disabled:cursor-not-allowed
+                            disabled:bg-gray-400
+                          "
+                        >
+                          {couponLoading
+                            ? "驗證中..."
+                            : "套用優惠券"}
+                        </button>
+                      </div>
+
+                      {couponMessage && (
+                        <div
+                          className="
+                            mt-3
+                            rounded-xl
+                            border
+                            border-red-100
+                            bg-red-50
+                            px-4
+                            py-3
+                            text-sm
+                            font-medium
+                            text-red-700
+                          "
+                        >
+                          {couponMessage}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1439,6 +1948,30 @@ export default function CheckoutPage() {
                   </span>
                 </div>
 
+                {appliedCoupon &&
+                  couponDiscount > 0 && (
+                    <div
+                      className="
+                        flex
+                        items-center
+                        justify-between
+                        gap-3
+                        text-sm
+                      "
+                    >
+                      <span className="text-gray-500">
+                        優惠券折扣
+                      </span>
+
+                      <span className="font-bold text-emerald-600">
+                        -NT${" "}
+                        {formatPrice(
+                          couponDiscount
+                        )}
+                      </span>
+                    </div>
+                  )}
+
                 <div
                   className="
                     flex
@@ -1506,18 +2039,37 @@ export default function CheckoutPage() {
                   總金額
                 </span>
 
-                <span
-                  className="
-                    text-2xl
-                    font-bold
-                    text-gray-900
-                  "
-                >
-                  NT${" "}
-                  {formatPrice(
-                    total
-                  )}
-                </span>
+                <div className="text-right">
+                  {appliedCoupon &&
+                    couponDiscount > 0 && (
+                      <p
+                        className="
+                          mb-1
+                          text-sm
+                          text-gray-400
+                          line-through
+                        "
+                      >
+                        NT${" "}
+                        {formatPrice(
+                          total
+                        )}
+                      </p>
+                    )}
+
+                  <span
+                    className="
+                      text-2xl
+                      font-bold
+                      text-gray-900
+                    "
+                  >
+                    NT${" "}
+                    {formatPrice(
+                      finalTotal
+                    )}
+                  </span>
+                </div>
               </div>
 
               <button

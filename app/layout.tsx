@@ -10,6 +10,7 @@ import { ProductProvider } from "@/components/ProductProvider";
 import { CartProvider } from "@/components/CartProvider";
 import { OrderProvider } from "@/components/OrderProvider";
 import { MemberProvider } from "@/components/MemberProvider";
+import { CouponProvider } from "@/components/CouponProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,9 +40,11 @@ export default function RootLayout({
         <ProductProvider>
           <MemberProvider>
             <CartProvider>
-              <OrderProvider>
-                {children}
-              </OrderProvider>
+              <CouponProvider>
+                <OrderProvider>
+                  {children}
+                </OrderProvider>
+              </CouponProvider>
             </CartProvider>
           </MemberProvider>
         </ProductProvider>
