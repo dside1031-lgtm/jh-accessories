@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -115,6 +114,9 @@ export default function MembersPage() {
           .includes(keyword) ||
         member.address
           .toLowerCase()
+          .includes(keyword) ||
+        member.memberCode
+          ?.toLowerCase()
           .includes(keyword);
 
       const matchStatus =
@@ -698,7 +700,7 @@ export default function MembersPage() {
                 onChange={(e) =>
                   updateForm(
                     "status",
-                    e.target.value
+                    e.target.value as MemberStatus
                   )
                 }
                 disabled={saving}
@@ -784,7 +786,7 @@ export default function MembersPage() {
                 e.target.value
               )
             }
-            placeholder="🔍 搜尋姓名、Email、電話、地址..."
+            placeholder="🔍 搜尋會員編號、姓名、Email、電話、地址..."
             className="min-w-0 flex-1 rounded-xl border border-gray-300 px-4 py-3 text-gray-900 outline-none transition focus:border-black focus:ring-2 focus:ring-black"
           />
 
@@ -962,6 +964,16 @@ export default function MembersPage() {
                         >
                           {member.status}
                         </span>
+
+                        {/* =================================================
+                            會員編號
+                        ================================================= */}
+
+                        {member.memberCode && (
+                          <span className="rounded-full bg-gray-100 px-3 py-1 text-sm font-semibold text-gray-700">
+                            會員編號：{member.memberCode}
+                          </span>
+                        )}
 
                       </div>
 
