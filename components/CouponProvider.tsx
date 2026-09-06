@@ -446,13 +446,15 @@ export function CouponProvider({
         );
 
       if (error) {
-        console.error(
-          "讀取優惠券資料失敗：",
-          error
-        );
+console.error("讀取優惠券資料失敗：", {
+message: error.message,
+code: error.code,
+details: error.details,
+hint: error.hint,
+});
+return;
+}
 
-        return;
-      }
 
       const normalized =
         (data ?? []).map(

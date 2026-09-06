@@ -1,3 +1,4 @@
+
 import type { Metadata } from "next";
 import {
   Geist,
@@ -11,6 +12,7 @@ import { CartProvider } from "@/components/CartProvider";
 import { OrderProvider } from "@/components/OrderProvider";
 import { MemberProvider } from "@/components/MemberProvider";
 import { CouponProvider } from "@/components/CouponProvider";
+import { AuthProvider } from "@/components/AuthProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -41,9 +43,11 @@ export default function RootLayout({
           <MemberProvider>
             <CartProvider>
               <CouponProvider>
-                <OrderProvider>
-                  {children}
-                </OrderProvider>
+                <AuthProvider>
+                  <OrderProvider>
+                    {children}
+                  </OrderProvider>
+                </AuthProvider>
               </CouponProvider>
             </CartProvider>
           </MemberProvider>

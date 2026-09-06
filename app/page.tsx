@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -6,10 +5,12 @@ import Link from "next/link";
 
 import { useProduct } from "@/components/ProductProvider";
 import { useCart } from "@/components/CartProvider";
+import { useAuth } from "@/components/AuthProvider";
 
 export default function Home() {
   const { products } = useProduct();
   const { cart, addToCart } = useCart();
+  const { user, loading, signOut } = useAuth();
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("全部");
@@ -30,27 +31,20 @@ export default function Home() {
 
   const filteredProducts = products.filter(
     (product: any) => {
-      const productName =
-        String(product.name || "");
+      const productName = String(product.name || "");
+      const productCategory = String(
+        product.category || ""
+      );
 
-      const productCategory =
-        String(product.category || "");
-
-      const matchSearch =
-        productName
-          .toLowerCase()
-          .includes(
-            search.toLowerCase()
-          );
+      const matchSearch = productName
+        .toLowerCase()
+        .includes(search.toLowerCase());
 
       const matchCategory =
         category === "全部" ||
         productCategory === category;
 
-      return (
-        matchSearch &&
-        matchCategory
-      );
+      return matchSearch && matchCategory;
     }
   );
 
@@ -59,9 +53,7 @@ export default function Home() {
   // ========================================
 
   function handleAddToCart(product: any) {
-    const stock = Number(
-      product.stock ?? 0
-    );
+    const stock = Number(product.stock ?? 0);
 
     if (stock <= 0) {
       alert("商品已售罄");
@@ -71,9 +63,19 @@ export default function Home() {
     const result = addToCart(product);
 
     if (result !== false) {
-      alert(
-        `「${product.name}」已加入購物車`
-      );
+      alert(`「${product.name}」已加入購物車`);
+    }
+  }
+
+  // ========================================
+  // 會員登出
+  // ========================================
+
+  async function handleSignOut() {
+    const result = await signOut();
+
+    if (result.error) {
+      alert(result.error);
     }
   }
 
@@ -83,13 +85,11 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-white text-gray-900">
-
       {/* ================================== */}
       {/* Header */}
       {/* ================================== */}
 
       <header className="sticky top-0 z-50 border-b border-gray-200 bg-white">
-
         <div
           className="
             mx-auto
@@ -105,7 +105,6 @@ export default function Home() {
             lg:px-8
           "
         >
-
           {/* Logo */}
 
           <Link
@@ -136,7 +135,6 @@ export default function Home() {
               sm:gap-6
             "
           >
-
             <Link
               href="/"
               className="
@@ -163,7 +161,108 @@ export default function Home() {
               後台管理
             </Link>
 
+            {/* ================================== */}
+            {/* 會員狀態 */}
+            {/* ================================== */}
+
+            {loading ? (
+              <span
+                className="
+                  hidden
+                  text-sm
+                  text-gray-500
+                  sm:block
+                "
+              >
+                載入中...
+              </span>
+            ) : user ? (
+              <>
+                {/* 會員中心 */}
+
+                <Link
+                  href="/account"
+                  className="
+                    hidden
+                    text-gray-800
+                    transition
+                    hover:text-black
+                    sm:block
+                  "
+                >
+                  會員中心
+                </Link>
+
+                {/* 登出 */}
+
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="
+                    text-gray-800
+                    transition
+                    hover:text-black
+                  "
+                >
+                  登出
+                </button>
+
+                {/* Email */}
+
+                <span
+                  className="
+                    hidden
+                    max-w-[180px]
+                    truncate
+                    text-sm
+                    font-semibold
+                    text-black
+                    lg:block
+                  "
+                  title={user.email ?? ""}
+                >
+                  {user.email}
+                </span>
+              </>
+            ) : (
+              <>
+                {/* 登入 */}
+
+                <Link
+                  href="/login"
+                  className="
+                    text-gray-800
+                    transition
+                    hover:text-black
+                  "
+                >
+                  登入
+                </Link>
+
+                {/* 註冊 */}
+
+                <Link
+                  href="/register"
+                  className="
+                    hidden
+                    rounded-lg
+                    bg-black
+                    px-3
+                    py-2
+                    text-white
+                    transition
+                    hover:bg-gray-800
+                    sm:block
+                  "
+                >
+                  註冊
+                </Link>
+              </>
+            )}
+
+            {/* ================================== */}
             {/* 購物車 */}
+            {/* ================================== */}
 
             <Link
               href="/cart"
@@ -175,7 +274,6 @@ export default function Home() {
                 text-black
               "
             >
-
               <span>
                 🛒
                 <span className="ml-1">
@@ -201,13 +299,9 @@ export default function Home() {
               >
                 {cartCount}
               </span>
-
             </Link>
-
           </nav>
-
         </div>
-
       </header>
 
       {/* ================================== */}
@@ -226,7 +320,6 @@ export default function Home() {
           lg:py-24
         "
       >
-
         <h1
           className="
             mb-5
@@ -278,7 +371,6 @@ export default function Home() {
         >
           開始購物
         </button>
-
       </section>
 
       {/* ================================== */}
@@ -297,11 +389,9 @@ export default function Home() {
           lg:px-8
         "
       >
-
         {/* 商品標題 */}
 
         <div className="mb-7 sm:mb-8">
-
           <h2
             className="
               text-2xl
@@ -325,7 +415,6 @@ export default function Home() {
           >
             找到適合你的生活好物
           </p>
-
         </div>
 
         {/* ================================== */}
@@ -333,7 +422,6 @@ export default function Home() {
         {/* ================================== */}
 
         <div className="mb-5 sm:mb-6">
-
           <input
             type="text"
             value={search}
@@ -359,7 +447,6 @@ export default function Home() {
               sm:text-base
             "
           />
-
         </div>
 
         {/* ================================== */}
@@ -367,21 +454,6 @@ export default function Home() {
         {/* ================================== */}
 
         <div className="mb-8 sm:mb-10">
-
-          {/*
-            手機版：
-            4 個分類固定同一行
-            不換行
-            不左右滑動
-            不使用 overflow-x-auto
-
-            390px 寬度時：
-            全部 / 生活用品 / 居家用品 / 3C配件
-
-            使用 grid-cols-4
-            每個分類平均分配寬度。
-          */}
-
           <div
             className="
               grid
@@ -394,14 +466,12 @@ export default function Home() {
               sm:gap-3
             "
           >
-
             {[
               "全部",
               "生活用品",
               "居家用品",
               "3C配件",
             ].map((item) => (
-
               <button
                 key={item}
                 type="button"
@@ -410,8 +480,8 @@ export default function Home() {
                 }
                 className={`
                   min-w-0
-                  whitespace-nowrap
                   overflow-hidden
+                  whitespace-nowrap
                   rounded-lg
                   border
                   px-1
@@ -435,11 +505,8 @@ export default function Home() {
                   {item}
                 </span>
               </button>
-
             ))}
-
           </div>
-
         </div>
 
         {/* ================================== */}
@@ -466,7 +533,6 @@ export default function Home() {
         {/* ================================== */}
 
         {filteredProducts.length === 0 ? (
-
           <div
             className="
               rounded-xl
@@ -478,7 +544,6 @@ export default function Home() {
               sm:py-20
             "
           >
-
             <p
               className="
                 font-medium
@@ -490,7 +555,6 @@ export default function Home() {
 
             {(search ||
               category !== "全部") && (
-
               <button
                 type="button"
                 onClick={() => {
@@ -512,13 +576,9 @@ export default function Home() {
               >
                 查看全部商品
               </button>
-
             )}
-
           </div>
-
         ) : (
-
           /* ================================== */
           /* 商品列表 */
           /* ================================== */
@@ -534,24 +594,17 @@ export default function Home() {
               xl:grid-cols-4
             "
           >
-
             {filteredProducts.map(
               (product: any) => {
+                const stock = Number(
+                  product.stock ?? 0
+                );
 
-                const stock =
-                  Number(
-                    product.stock ?? 0
-                  );
-
-                const soldOut =
-                  stock <= 0;
+                const soldOut = stock <= 0;
 
                 return (
-
                   <article
-                    key={String(
-                      product.id
-                    )}
+                    key={String(product.id)}
                     className="
                       min-w-0
                       overflow-hidden
@@ -566,7 +619,6 @@ export default function Home() {
                       sm:p-5
                     "
                   >
-
                     {/* ====================== */}
                     {/* 商品圖片 */}
                     {/* ====================== */}
@@ -575,7 +627,6 @@ export default function Home() {
                       href={`/products/${product.id}`}
                       className="block"
                     >
-
                       <div
                         className="
                           overflow-hidden
@@ -583,7 +634,6 @@ export default function Home() {
                           bg-gray-100
                         "
                       >
-
                         <img
                           src={
                             product.image ||
@@ -603,9 +653,7 @@ export default function Home() {
                             hover:scale-105
                           "
                         />
-
                       </div>
-
                     </Link>
 
                     {/* ====================== */}
@@ -615,7 +663,6 @@ export default function Home() {
                     <Link
                       href={`/products/${product.id}`}
                     >
-
                       <h3
                         className="
                           mt-4
@@ -629,7 +676,6 @@ export default function Home() {
                       >
                         {product.name}
                       </h3>
-
                     </Link>
 
                     {/* ====================== */}
@@ -647,9 +693,7 @@ export default function Home() {
                       NT$
                       {Number(
                         product.price || 0
-                      ).toLocaleString(
-                        "zh-TW"
-                      )}
+                      ).toLocaleString("zh-TW")}
                     </p>
 
                     {/* ====================== */}
@@ -726,9 +770,7 @@ export default function Home() {
                       type="button"
                       disabled={soldOut}
                       onClick={() =>
-                        handleAddToCart(
-                          product
-                        )
+                        handleAddToCart(product)
                       }
                       className={`
                         mt-3
@@ -749,17 +791,12 @@ export default function Home() {
                         ? "商品已售罄"
                         : "加入購物車"}
                     </button>
-
                   </article>
-
                 );
               }
             )}
-
           </div>
-
         )}
-
       </section>
 
       {/* ================================== */}
@@ -776,7 +813,6 @@ export default function Home() {
           sm:px-6
         "
       >
-
         <h3
           className="
             text-xl
@@ -798,9 +834,7 @@ export default function Home() {
         >
           讓生活更簡單、更美好
         </p>
-
       </footer>
-
     </main>
   );
 }
