@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -22,7 +23,11 @@ export type MemberStatus =
 // =====================================================
 
 export type Member = {
+  // Supabase UUID 主鍵
   id: string;
+
+  // 顯示用會員編號
+  memberCode?: string;
 
   name: string;
 
@@ -35,8 +40,6 @@ export type Member = {
   status: MemberStatus;
 
   createdAt: string;
-
-  updatedAt?: string;
 
   orderCount?: number;
 
@@ -137,9 +140,16 @@ function normalizeMember(
   member: any
 ): Member {
   return {
+    // Supabase UUID
     id: String(
       member?.id ?? ""
     ),
+
+    // MEM-xxxx 類型會員編號
+    memberCode:
+      member?.member_code
+        ? String(member.member_code)
+        : undefined,
 
     name: String(
       member?.name ?? ""
@@ -166,10 +176,6 @@ function normalizeMember(
       member?.created_at ??
       new Date().toISOString(),
 
-    updatedAt:
-      member?.updated_at ??
-      undefined,
-
     orderCount:
       Number(
         member?.order_count ?? 0
@@ -183,7 +189,7 @@ function normalizeMember(
 }
 
 // =====================================================
-// 建立會員 ID
+// 建立會員編號
 // =====================================================
 
 function createMemberId(): string {
@@ -387,11 +393,22 @@ export function MemberProvider({
     }
 
     // -----------------------------------------------
-    // 建立會員
+    // 建立會員編號
     // -----------------------------------------------
 
-    const id =
+    const memberCode =
       createMemberId();
+
+    // -----------------------------------------------
+    // 寫入 Supabase
+    //
+    // 注意：
+    // 不再寫入 id。
+    //
+    // id 是 UUID，由 Supabase 自動產生。
+    //
+    // MEM-xxxx 存在 member_code。
+    // -----------------------------------------------
 
     const {
       data,
@@ -399,13 +416,20 @@ export function MemberProvider({
     } = await supabase
       .from("members")
       .insert({
-        id,
+        member_code: memberCode,
+
         name,
+
         email,
+
         phone,
+
         address,
+
         status,
+
         order_count: 0,
+
         total_spent: 0,
       })
       .select("*")
@@ -452,10 +476,7 @@ export function MemberProvider({
     const updateData: Record<
       string,
       unknown
-    > = {
-      updated_at:
-        new Date().toISOString(),
-    };
+    > = {};
 
     // -----------------------------------------------
     // 姓名
@@ -600,7 +621,21 @@ export function MemberProvider({
     }
 
     // -----------------------------------------------
+    // 如果沒有任何欄位需要更新
+    // -----------------------------------------------
+
+    if (
+      Object.keys(updateData)
+        .length === 0
+    ) {
+      return true;
+    }
+
+    // -----------------------------------------------
     // 寫入 Supabase
+    //
+    // 不寫 updated_at，
+    // 因為目前 members 表沒有這個欄位。
     // -----------------------------------------------
 
     const {
@@ -801,9 +836,6 @@ export function MemberProvider({
 
         total_spent:
           safeTotalSpent,
-
-        updated_at:
-          new Date().toISOString(),
       })
       .eq("id", id)
       .select("*")
@@ -843,12 +875,14 @@ export function MemberProvider({
   // ===================================================
 
   async function clearMembers(): Promise<void> {
+    // 使用 IS NOT NULL，
+    // 避免拿空字串去比較 UUID。
     const {
       error,
     } = await supabase
       .from("members")
       .delete()
-      .neq("id", "");
+      .not("id", "is", null);
 
     if (error) {
       console.error(
