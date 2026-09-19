@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -13,7 +14,10 @@ export default function TestSupabasePage() {
       try {
         const { data, error } = await supabase
           .from("products")
-          .select("*");
+          .select("*")
+          .order("created_at", {
+            ascending: false,
+          });
 
         if (error) {
           console.error("Supabase 查詢錯誤:", error);
@@ -25,8 +29,11 @@ export default function TestSupabasePage() {
         setData(data ?? []);
       } catch (error) {
         console.error("Supabase 連線錯誤:", error);
+
         setErrorMessage(
-          error instanceof Error ? error.message : String(error)
+          error instanceof Error
+            ? error.message
+            : String(error)
         );
       } finally {
         setLoading(false);
@@ -52,8 +59,13 @@ export default function TestSupabasePage() {
 
           {!loading && errorMessage && (
             <div className="rounded-xl bg-red-50 p-5 text-red-700">
-              <p className="font-bold">Supabase 查詢失敗</p>
-              <p className="mt-2">{errorMessage}</p>
+              <p className="font-bold">
+                Supabase 查詢失敗
+              </p>
+
+              <p className="mt-2">
+                {errorMessage}
+              </p>
             </div>
           )}
 

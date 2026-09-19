@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 
@@ -76,13 +77,9 @@ type PaymentRequest = {
 // → lowercase
 // → SHA256
 // → uppercase
-//
-// 官方文件要求使用 SHA256 產生 CheckMacValue。
 // =====================================================
 
-function encodeForEcpay(
-  value: string
-) {
+function encodeForEcpay(value: string) {
   return encodeURIComponent(value)
     .replace(/%20/g, "+")
     .toLowerCase();
@@ -95,26 +92,23 @@ function encodeForEcpay(
 function generateCheckMacValue(
   params: Record<string, string | number>
 ) {
-  const sortedKeys =
-    Object.keys(params)
-      .filter(
-        (key) =>
-          key !== "CheckMacValue"
+  const sortedKeys = Object.keys(params)
+    .filter(
+      (key) =>
+        key !== "CheckMacValue"
+    )
+    .sort((a, b) =>
+      a.toLowerCase().localeCompare(
+        b.toLowerCase()
       )
-      .sort((a, b) =>
-        a.toLowerCase()
-          .localeCompare(
-            b.toLowerCase()
-          )
-      );
+    );
 
-  const rawData =
-    sortedKeys
-      .map(
-        (key) =>
-          `${key}=${params[key]}`
-      )
-      .join("&");
+  const rawData = sortedKeys
+    .map(
+      (key) =>
+        `${key}=${params[key]}`
+    )
+    .join("&");
 
   const source =
     `HashKey=${HASH_KEY}&${rawData}&HashIV=${HASH_IV}`;
@@ -137,9 +131,7 @@ function cleanText(
   value: unknown,
   maxLength: number
 ) {
-  return String(
-    value ?? ""
-  )
+  return String(value ?? "")
     .replace(/[\r\n]+/g, " ")
     .trim()
     .slice(0, maxLength);
@@ -163,7 +155,10 @@ function createMerchantTradeNo(
   const random =
     Math.random()
       .toString(36)
-      .replace(/[^a-z0-9]/gi, "")
+      .replace(
+        /[^a-z0-9]/gi,
+        ""
+      )
       .slice(0, 6)
       .toUpperCase();
 
@@ -190,8 +185,7 @@ function createMerchantTradeNo(
 function normalizeAmount(
   value: unknown
 ) {
-  const amount =
-    Number(value);
+  const amount = Number(value);
 
   if (
     !Number.isFinite(amount) ||
@@ -214,16 +208,14 @@ function buildItemName(
     return "JH Accessories 商品";
   }
 
-  const names =
-    items
-      .map((item) =>
-        cleanText(
-          item.name ||
-            "商品",
-          50
-        )
+  const names = items
+    .map((item) =>
+      cleanText(
+        item.name || "商品",
+        50
       )
-      .filter(Boolean);
+    )
+    .filter(Boolean);
 
   if (names.length === 0) {
     return "JH Accessories 商品";
@@ -286,9 +278,7 @@ export async function POST(
       );
 
     const items =
-      Array.isArray(
-        body.items
-      )
+      Array.isArray(body.items)
         ? body.items
         : [];
 
@@ -338,8 +328,7 @@ export async function POST(
     // 交易時間
     // -------------------------------------------------
 
-    const now =
-      new Date();
+    const now = new Date();
 
     const merchantTradeDate =
       [
@@ -369,15 +358,16 @@ export async function POST(
     // -------------------------------------------------
 
     const itemName =
-      buildItemName(
-        items
-      );
+      buildItemName(items);
 
     // -------------------------------------------------
     // ReturnURL
     //
     // 綠界付款完成後，
     // Server POST 到這裡。
+    //
+    // 注意：
+    // 這不是瀏覽器跳轉頁。
     // -------------------------------------------------
 
     const returnUrl =
@@ -387,13 +377,78 @@ export async function POST(
     // OrderResultURL
     //
     // 使用者付款完成後，
-    // 導回網站。
+    // 導回網站的付款結果頁。
     // -------------------------------------------------
 
     const orderResultUrl =
       `${BASE_URL}/success?orderId=${encodeURIComponent(
         orderId
       )}`;
+
+    // -------------------------------------------------
+    // ClientBackURL
+    //
+    // 綠界付款頁上的「返回商店」
+    // 或相關返回流程使用。
+    //
+    // 目前先回 checkout。
+    // -------------------------------------------------
+
+    const clientBackUrl =
+      `${BASE_URL}/checkout`;
+
+    // -------------------------------------------------
+    // 暫時除錯
+    //
+    // 用來確認實際產生的網址。
+    // -------------------------------------------------
+
+    console.log(
+      "========================================"
+    );
+
+    console.log(
+      "ECPay 建立付款"
+    );
+
+    console.log(
+      "Environment:",
+      ECPAY_MODE
+    );
+
+    console.log(
+      "MerchantTradeNo:",
+      merchantTradeNo
+    );
+
+    console.log(
+      "OrderId:",
+      orderId
+    );
+
+    console.log(
+      "Amount:",
+      amount
+    );
+
+    console.log(
+      "ReturnURL:",
+      returnUrl
+    );
+
+    console.log(
+      "OrderResultURL:",
+      orderResultUrl
+    );
+
+    console.log(
+      "ClientBackURL:",
+      clientBackUrl
+    );
+
+    console.log(
+      "========================================"
+    );
 
     // -------------------------------------------------
     // 建立綠界付款參數
@@ -427,11 +482,17 @@ export async function POST(
       ItemName:
         itemName,
 
+      // Server-to-Server 通知
       ReturnURL:
         returnUrl,
 
+      // 付款完成後導回網站
       OrderResultURL:
         orderResultUrl,
+
+      // 返回商店
+      ClientBackURL:
+        clientBackUrl,
 
       NeedExtraPaidInfo:
         "N",
@@ -445,21 +506,25 @@ export async function POST(
       IgnorePayment:
         "ATM#CVS#BARCODE#WebATM",
 
+      // 原始網站訂單編號
       CustomField1:
         orderId,
 
+      // 顧客姓名
       CustomField2:
         cleanText(
           customer.name,
           50
         ),
 
+      // 顧客電話
       CustomField3:
         cleanText(
           customer.phone,
           50
         ),
 
+      // 顧客 Email
       CustomField4:
         cleanText(
           customer.email,
@@ -483,15 +548,11 @@ export async function POST(
     // -------------------------------------------------
 
     const formInputs =
-      Object.entries(
-        params
-      )
+      Object.entries(params)
         .map(
           ([key, value]) => {
             const safeKey =
-              escapeHtml(
-                key
-              );
+              escapeHtml(key);
 
             const safeValue =
               escapeHtml(

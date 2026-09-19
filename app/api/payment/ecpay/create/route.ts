@@ -1,638 +1,366 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-
-// =====================================================
-// ECPay AIO / 全方位金流
-// 建立信用卡付款資料
-//
-// POST
-// /api/payment/ecpay/create
-// =====================================================
 
 export const runtime = "nodejs";
 
 // =====================================================
-// 環境變數
+// 取得台灣時間
+// ECPay MerchantTradeDate 格式：yyyy/MM/dd HH:mm:ss
 // =====================================================
+function getEcpayTradeDate() {
+  const now = new Date();
 
-const MERCHANT_ID =
-  process.env.ECPAY_MERCHANT_ID || "";
+  const formatter = new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 
-const HASH_KEY =
-  process.env.ECPAY_HASH_KEY || "";
+  const parts = formatter.formatToParts(now);
 
-const HASH_IV =
-  process.env.ECPAY_HASH_IV || "";
+  const get = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? "";
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ||
-  process.env.NEXT_PUBLIC_BASE_URL ||
-  "http://localhost:3000";
-
-const ECPAY_ENV =
-  process.env.ECPAY_ENV ||
-  process.env.ECPAY_MODE ||
-  "stage";
-
-// =====================================================
-// 綠界付款網址
-// =====================================================
-
-const ECPAY_PAYMENT_URL =
-  ECPAY_ENV === "production"
-    ? "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5"
-    : "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5";
-
-// =====================================================
-// 型別
-// =====================================================
-
-type PaymentItem = {
-  id?: string | number;
-  productId?: string | number;
-  name?: string;
-  price?: number | string;
-  quantity?: number | string;
-};
-
-type PaymentRequest = {
-  orderId?: string;
-  amount?: number | string;
-  itemName?: string;
-  items?: PaymentItem[];
-
-  customer?: {
-    name?: string;
-    phone?: string;
-    address?: string;
-    email?: string;
-  };
-};
-
-// =====================================================
-// 清理文字
-// =====================================================
-
-function cleanText(
-  value: unknown,
-  maxLength: number
-): string {
-  return String(value ?? "")
-    .replace(/[\r\n]+/g, " ")
-    .trim()
-    .slice(0, maxLength);
+  return `${get("year")}/${get("month")}/${get("day")} ${get(
+    "hour"
+  )}:${get("minute")}:${get("second")}`;
 }
 
 // =====================================================
-// ECPay URL Encode
-//
-// ECPay CheckMacValue：
-//
-// HashKey + Data + HashIV
-// ↓
-// URL Encode
-// ↓
-// lowercase
-// ↓
-// SHA256
-// ↓
-// uppercase
-//
-// 官方文件要求接收方也必須驗證 CheckMacValue。
+// ECPay CheckMacValue
 // =====================================================
-
-function ecpayEncode(
-  value: string
-): string {
-  return encodeURIComponent(value)
-    .replace(/%20/g, "+")
-    .replace(/!/g, "%21")
-    .replace(/'/g, "%27")
-    .replace(/\(/g, "%28")
-    .replace(/\)/g, "%29")
-    .replace(/\*/g, "%2A")
-    .toLowerCase();
-}
-
-// =====================================================
-// CheckMacValue
-// =====================================================
-
 function generateCheckMacValue(
-  params: Record<string, string>
-): string {
-  const sortedKeys =
-    Object.keys(params)
-      .filter(
-        (key) =>
-          key.toLowerCase() !==
-          "checkmacvalue"
-      )
-      .sort((a, b) =>
-        a.toLowerCase()
-          .localeCompare(
-            b.toLowerCase()
-          )
+  params: Record<string, string>,
+  hashKey: string,
+  hashIV: string
+) {
+  const filteredParams = Object.entries(params)
+    .filter(([key, value]) => {
+      return (
+        key !== "CheckMacValue" &&
+        value !== undefined &&
+        value !== null &&
+        value !== ""
       );
+    })
+    .sort(([keyA], [keyB]) => {
+      const a = keyA.toLowerCase();
+      const b = keyB.toLowerCase();
 
-  const queryString =
-    sortedKeys
-      .map(
-        (key) =>
-          `${key}=${params[key]}`
-      )
-      .join("&");
+      if (a < b) return -1;
+      if (a > b) return 1;
 
-  const raw =
-    `HashKey=${HASH_KEY}&${queryString}&HashIV=${HASH_IV}`;
+      return 0;
+    });
 
-  const encoded =
-    ecpayEncode(raw);
+  const rawString =
+    `HashKey=${hashKey}&` +
+    filteredParams
+      .map(([key, value]) => `${key}=${value}`)
+      .join("&") +
+    `&HashIV=${hashIV}`;
+
+  const encodedString = encodeURIComponent(rawString)
+    .toLowerCase()
+    .replace(/%20/g, "+")
+    .replace(/%21/g, "!")
+    .replace(/%28/g, "(")
+    .replace(/%29/g, ")")
+    .replace(/%2a/g, "*")
+    .replace(/%2d/g, "-")
+    .replace(/%5f/g, "_")
+    .replace(/%2e/g, ".")
+    .replace(/%7e/g, "~");
 
   return crypto
     .createHash("sha256")
-    .update(encoded, "utf8")
+    .update(encodedString)
     .digest("hex")
     .toUpperCase();
 }
 
 // =====================================================
-// MerchantTradeNo
-//
-// ECPay：
-// - 最多 20 字元
-// - 英數字
-// - 不可重複
+// 建立綠界 MerchantTradeNo
 // =====================================================
+function createMerchantTradeNo() {
+  const timestamp = Date.now().toString();
 
-function createMerchantTradeNo(
-  orderId?: string
-): string {
-  const now = new Date();
-
-  const year =
-    String(
-      now.getFullYear()
-    ).slice(-2);
-
-  const month =
-    String(
-      now.getMonth() + 1
-    ).padStart(2, "0");
-
-  const day =
-    String(
-      now.getDate()
-    ).padStart(2, "0");
-
-  const hour =
-    String(
-      now.getHours()
-    ).padStart(2, "0");
-
-  const minute =
-    String(
-      now.getMinutes()
-    ).padStart(2, "0");
-
-  const second =
-    String(
-      now.getSeconds()
-    ).padStart(2, "0");
-
-  const cleanOrderId =
-    String(orderId || "")
-      .replace(
-        /[^a-zA-Z0-9]/g,
-        ""
-      )
-      .slice(-4);
-
-  const random =
-    Math.random()
-      .toString(36)
-      .replace(
-        /[^a-zA-Z0-9]/g,
-        ""
-      )
-      .slice(0, 3)
-      .toUpperCase();
-
-  const result =
-    `JH${year}${month}${day}${hour}${minute}${second}${cleanOrderId}${random}`;
-
-  return result
-    .replace(
-      /[^a-zA-Z0-9]/g,
-      ""
-    )
-    .slice(0, 20);
-}
-
-// =====================================================
-// 交易日期
-// =====================================================
-
-function formatTradeDate(): string {
-  const now = new Date();
-
-  const yyyy =
-    now.getFullYear();
-
-  const MM =
-    String(
-      now.getMonth() + 1
-    ).padStart(2, "0");
-
-  const dd =
-    String(
-      now.getDate()
-    ).padStart(2, "0");
-
-  const HH =
-    String(
-      now.getHours()
-    ).padStart(2, "0");
-
-  const mm =
-    String(
-      now.getMinutes()
-    ).padStart(2, "0");
-
-  const ss =
-    String(
-      now.getSeconds()
-    ).padStart(2, "0");
-
-  return `${yyyy}/${MM}/${dd} ${HH}:${mm}:${ss}`;
-}
-
-// =====================================================
-// 商品名稱
-// =====================================================
-
-function buildItemName(
-  body: PaymentRequest
-): string {
-  if (
-    body.itemName &&
-    body.itemName.trim()
-  ) {
-    return cleanText(
-      body.itemName
-        .replace(/#/g, " "),
-      200
-    );
-  }
-
-  if (
-    Array.isArray(body.items) &&
-    body.items.length > 0
-  ) {
-    const names =
-      body.items
-        .map((item) =>
-          cleanText(
-            item.name ||
-              "商品",
-            50
-          )
-        )
-        .filter(Boolean);
-
-    if (names.length > 0) {
-      return names
-        .join("#")
-        .slice(0, 200);
-    }
-  }
-
-  return "JH Accessories 商品";
+  return `JH${timestamp.slice(-17)}`;
 }
 
 // =====================================================
 // POST
+// 建立 ECPay 付款資料
 // =====================================================
-
-export async function POST(
-  request: NextRequest
-) {
+export async function POST(request: NextRequest) {
   try {
-    // =================================================
-    // 檢查環境變數
-    // =================================================
+    const body = await request.json();
 
-    if (
-      !MERCHANT_ID ||
-      !HASH_KEY ||
-      !HASH_IV
-    ) {
-      console.error(
-        "ECPay 環境變數未設定。"
-      );
+    const {
+      orderId,
+      amount,
+      itemName,
+      items,
+      customer,
+    } = body;
 
+    const merchantId = process.env.ECPAY_MERCHANT_ID;
+    const hashKey = process.env.ECPAY_HASH_KEY;
+    const hashIV = process.env.ECPAY_HASH_IV;
+
+    // ===================================================
+    // 網站網址
+    // ===================================================
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.NEXT_PUBLIC_BASE_URL ||
+      "http://localhost:3000";
+    console.log("ECPay Base URL:", baseUrl);
+    // ===================================================
+    // ECPay 環境
+    // ===================================================
+    const environment =
+      process.env.ECPAY_ENV ||
+      process.env.ECPAY_MODE ||
+      "stage";
+
+    // ===================================================
+    // 檢查 ECPay 設定
+    // ===================================================
+    if (!merchantId || !hashKey || !hashIV) {
       return NextResponse.json(
         {
           success: false,
           message:
-            "綠界付款設定尚未完成，請檢查 .env.local。",
+            "ECPay 設定不完整，請確認 ECPAY_MERCHANT_ID、ECPAY_HASH_KEY、ECPAY_HASH_IV。",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
-    // =================================================
-    // Request
-    // =================================================
-
-    const body =
-      (await request.json()) as PaymentRequest;
-
-    // =================================================
-    // 訂單編號
-    // =================================================
-
-    const orderId =
-      cleanText(
-        body?.orderId,
-        50
-      );
-
+    // ===================================================
+    // 檢查訂單 ID
+    // ===================================================
     if (!orderId) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "缺少訂單編號。",
+          message: "缺少 orderId。",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
-    // =================================================
-    // 金額
-    // =================================================
+    // ===================================================
+    // 付款金額
+    // ===================================================
+    const totalAmount = Math.round(Number(amount));
 
-    const amount =
-      Number(
-        body?.amount
-      );
-
-    if (
-      !Number.isInteger(amount) ||
-      amount <= 0
-    ) {
+    if (!Number.isInteger(totalAmount) || totalAmount <= 0) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "付款金額必須是大於 0 的整數。",
+          message: "付款金額無效。",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
-    // ECPay AIO TotalAmount 限制
-    if (
-      amount > 200000
-    ) {
+    // ECPay 測試環境限制
+    if (totalAmount > 200000) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "付款金額不可超過 NT$200,000。",
+          message: "付款金額不可超過 200000。",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
-    // =================================================
+    // ===================================================
+    // 建立 MerchantTradeNo
+    // ===================================================
+    const merchantTradeNo = createMerchantTradeNo();
+
+    // ===================================================
+    // 建立台灣時間
+    // ===================================================
+    const merchantTradeDate = getEcpayTradeDate();
+
+    // ===================================================
     // 商品名稱
-    // =================================================
+    // ===================================================
+    let finalItemName = "JH Accessories 商品";
 
-    const itemName =
-      buildItemName(body);
+    if (typeof itemName === "string" && itemName.trim()) {
+      finalItemName = itemName.trim();
+    }
 
-    // =================================================
-    // MerchantTradeNo
-    // =================================================
+    // ECPay ItemName 最多 400 字元
+    finalItemName = finalItemName.slice(0, 200);
 
-    const merchantTradeNo =
-      createMerchantTradeNo(
-        orderId
-      );
+    // ===================================================
+    // ECPay API URL
+    // ===================================================
+    const paymentUrl =
+      environment === "production"
+        ? "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5"
+        : "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5";
 
-    // =================================================
-    // ReturnURL
-    //
-    // 綠界 Server → POST
-    // =================================================
+    // ===================================================
+    // Callback URL
+    // ===================================================
+    const returnUrl = `${baseUrl}/api/payment/ecpay/notify`;
 
-    const returnURL =
-      `${BASE_URL}/api/payment/ecpay/notify`;
+    const orderResultUrl = `${baseUrl}/api/payment/ecpay/result`;
 
-    // =================================================
-    // OrderResultURL
-    //
-    // 使用者付款完成後導回網站
-    // =================================================
+    const clientBackUrl = `${baseUrl}/checkout`;
 
-    const orderResultURL =
-      `${BASE_URL}/success?orderId=${encodeURIComponent(
-        orderId
-      )}&payment=success`;
-
-    // =================================================
+    // ===================================================
     // ECPay 付款參數
-    // =================================================
+    // ===================================================
+    const params: Record<string, string> = {
+      MerchantID: String(merchantId),
 
-    const params: Record<
-      string,
-      string
-    > = {
-      MerchantID:
-        MERCHANT_ID,
+      MerchantTradeNo: merchantTradeNo,
 
-      MerchantTradeNo:
-        merchantTradeNo,
+      MerchantTradeDate: merchantTradeDate,
 
-      MerchantTradeDate:
-        formatTradeDate(),
+      PaymentType: "aio",
 
-      PaymentType:
-        "aio",
+      TotalAmount: String(totalAmount),
 
-      TotalAmount:
-        String(amount),
+      TradeDesc: "JH Accessories 商品訂單",
 
-      TradeDesc:
-        "JH Accessories 商品訂單",
+      ItemName: finalItemName,
 
-      ItemName:
-        itemName,
+      ReturnURL: returnUrl,
 
-      ReturnURL:
-        returnURL,
+      OrderResultURL: orderResultUrl,
 
-      OrderResultURL:
-        orderResultURL,
+      ClientBackURL: clientBackUrl,
 
-      ChoosePayment:
-        "Credit",
+      ChoosePayment: "Credit",
 
-      EncryptType:
-        "1",
+      EncryptType: "1",
 
-      CustomField1:
-        orderId,
-
-      CustomField2:
-        cleanText(
-          body.customer?.name,
-          50
-        ),
-
-      CustomField3:
-        cleanText(
-          body.customer?.phone,
-          50
-        ),
-
-      CustomField4:
-        cleanText(
-          body.customer?.email,
-          100
-        ),
+      CustomField1: String(orderId),
     };
 
-    // =================================================
-    // CheckMacValue
-    // =================================================
-
-    params.CheckMacValue =
-      generateCheckMacValue(
-        params
-      );
-
-    // =================================================
-    // Server Log
-    // =================================================
-
-    console.log(
-      "========================================"
+    // ===================================================
+    // 產生 CheckMacValue
+    // ===================================================
+    const checkMacValue = generateCheckMacValue(
+      params,
+      hashKey,
+      hashIV
     );
 
-    console.log(
-      "ECPay 建立付款"
-    );
+    params.CheckMacValue = checkMacValue;
 
-    console.log(
-      "Environment:",
-      ECPAY_ENV
-    );
+    // ===================================================
+    // Debug Log
+    // ===================================================
+    console.log("========================================");
+    console.log("ECPay 建立付款");
+    console.log("========================================");
 
-    console.log(
-      "MerchantTradeNo:",
-      merchantTradeNo
-    );
+    console.log("Environment:", environment);
 
-    console.log(
-      "OrderId:",
-      orderId
-    );
+    console.log("MerchantID:", merchantId);
 
-    console.log(
-      "Amount:",
-      amount
-    );
+    console.log("MerchantTradeNo:", merchantTradeNo);
 
-    console.log(
-      "ReturnURL:",
-      returnURL
-    );
+    console.log("MerchantTradeDate:", merchantTradeDate);
 
-    console.log(
-      "========================================"
-    );
+    console.log("TotalAmount:", totalAmount);
 
-    // =================================================
-    // 回傳
-    // =================================================
+    console.log("OrderID:", orderId);
 
-    return NextResponse.json(
-      {
-        success: true,
+    console.log("ReturnURL:", returnUrl);
 
-        message:
-          "綠界付款資料建立成功。",
+    console.log("OrderResultURL:", orderResultUrl);
 
-        action:
-          ECPAY_PAYMENT_URL,
+    console.log("ClientBackURL:", clientBackUrl);
 
-        merchantTradeNo,
+    console.log("CheckMacValue:", checkMacValue);
 
-        params,
-      },
-      {
-        status: 200,
-        headers: {
-          "Cache-Control":
-            "no-store",
-        },
-      }
-    );
+    console.log("========================================");
+
+    // ===================================================
+    // 回傳付款資料給前端
+    // ===================================================
+    return NextResponse.json({
+      success: true,
+
+      message: "ECPay payment parameters created successfully.",
+
+      action: paymentUrl,
+
+      merchantTradeNo,
+
+      params,
+    });
   } catch (error) {
-    console.error(
-      "ECPay 建立付款失敗：",
-      error
-    );
+    console.error("ECPay create payment error:", error);
 
     return NextResponse.json(
       {
         success: false,
-        message:
-          "建立綠界付款資料時發生錯誤。",
+
+        message: "建立 ECPay 付款資料時發生錯誤。",
+
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }
 
 // =====================================================
 // GET
+// 測試 API 是否正常
 // =====================================================
-
 export async function GET() {
+  const merchantId = process.env.ECPAY_MERCHANT_ID;
+
+  const hashKey = process.env.ECPAY_HASH_KEY;
+
+  const hashIV = process.env.ECPAY_HASH_IV;
+
+  const environment =
+    process.env.ECPAY_ENV ||
+    process.env.ECPAY_MODE ||
+    "stage";
+
+  const paymentUrl =
+    environment === "production"
+      ? "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5"
+      : "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5";
+
   return NextResponse.json({
     success: true,
 
-    service:
-      "ECPay Create Payment API",
+    service: "ECPay Create Payment API",
 
-    environment:
-      ECPAY_ENV,
+    environment,
 
     configured:
-      Boolean(
-        MERCHANT_ID &&
-          HASH_KEY &&
-          HASH_IV
-      ),
+      Boolean(merchantId) &&
+      Boolean(hashKey) &&
+      Boolean(hashIV),
 
-    action:
-      ECPAY_PAYMENT_URL,
+    action: paymentUrl,
 
-    message:
-      "ECPay create payment API is working.",
+    message: "ECPay create payment API is working.",
   });
 }

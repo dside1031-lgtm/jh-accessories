@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -16,6 +17,16 @@ export default function Home() {
   const [category, setCategory] = useState("全部");
 
   // ========================================
+  // 偵錯資訊
+  // ========================================
+
+  console.log("========================================");
+  console.log("首頁收到的 products：", products);
+  console.log("首頁商品數量：", products.length);
+  console.log("目前搜尋：", search);
+  console.log("目前分類：", category);
+
+  // ========================================
   // 購物車商品總數量
   // ========================================
 
@@ -32,6 +43,7 @@ export default function Home() {
   const filteredProducts = products.filter(
     (product: any) => {
       const productName = String(product.name || "");
+
       const productCategory = String(
         product.category || ""
       );
@@ -44,9 +56,33 @@ export default function Home() {
         category === "全部" ||
         productCategory === category;
 
+      console.log("商品篩選：", {
+        id: product.id,
+        name: product.name,
+        category: product.category,
+        productName,
+        productCategory,
+        search,
+        matchSearch,
+        matchCategory,
+        result: matchSearch && matchCategory,
+      });
+
       return matchSearch && matchCategory;
     }
   );
+
+  console.log(
+    "篩選後的 filteredProducts：",
+    filteredProducts
+  );
+
+  console.log(
+    "篩選後商品數量：",
+    filteredProducts.length
+  );
+
+  console.log("========================================");
 
   // ========================================
   // 加入購物車
@@ -596,6 +632,11 @@ export default function Home() {
           >
             {filteredProducts.map(
               (product: any) => {
+                console.log(
+                  "準備 Render 商品卡片：",
+                  product
+                );
+
                 const stock = Number(
                   product.stock ?? 0
                 );
@@ -634,25 +675,58 @@ export default function Home() {
                           bg-gray-100
                         "
                       >
-                        <img
-                          src={
-                            product.image ||
-                            "/placeholder.png"
-                          }
-                          alt={
-                            product.name ||
-                            "商品"
-                          }
-                          className="
-                            aspect-square
-                            h-auto
-                            w-full
-                            object-cover
-                            transition
-                            duration-300
-                            hover:scale-105
-                          "
-                        />
+                        {product.image ? (
+                          <img
+                            src={product.image}
+                            alt={
+                              product.name ||
+                              "商品"
+                            }
+                            className="
+                              aspect-square
+                              h-auto
+                              w-full
+                              object-cover
+                              transition
+                              duration-300
+                              hover:scale-105
+                            "
+                            onError={(event) => {
+                              const target =
+                                event.currentTarget;
+
+                              target.style.display =
+                                "none";
+
+                              const parent =
+                                target.parentElement;
+
+                              if (parent) {
+                                parent.innerHTML = `
+                                  <div class="flex aspect-square w-full items-center justify-center bg-gray-100 text-sm font-medium text-gray-500">
+                                    暫無商品圖片
+                                  </div>
+                                `;
+                              }
+                            }}
+                          />
+                        ) : (
+                          <div
+                            className="
+                              flex
+                              aspect-square
+                              w-full
+                              items-center
+                              justify-center
+                              bg-gray-100
+                              text-sm
+                              font-medium
+                              text-gray-500
+                            "
+                          >
+                            暫無商品圖片
+                          </div>
+                        )}
                       </div>
                     </Link>
 

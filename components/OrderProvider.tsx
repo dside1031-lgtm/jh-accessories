@@ -78,6 +78,9 @@ export type Order = {
 
   total: number;
 
+  // ★ 優惠券代碼
+  couponCode?: string;
+
   totalQuantity?: number;
 
   status?: OrderStatus;
@@ -335,6 +338,15 @@ export function OrderProvider({
               order.total
             )
           : calculatedTotal,
+
+      couponCode:
+        order?.couponCode
+          ? String(
+              order.couponCode
+            )
+              .trim()
+              .toUpperCase()
+          : undefined,
 
       totalQuantity:
         Number(
@@ -694,6 +706,15 @@ export function OrderProvider({
                     0
                 ),
 
+              couponCode:
+                order?.couponCode
+                  ? String(
+                      order.couponCode
+                    )
+                      .trim()
+                      .toUpperCase()
+                  : undefined,
+
               totalQuantity:
                 Number(
                   order?.totalQuantity ||
@@ -776,11 +797,21 @@ export function OrderProvider({
   //   ↓
   // SUPABASE_SECRET_KEY
   //   ↓
-  // create_order_and_decrease_stock
+  // create_order_and_decrease_stock_with_total
   //   ↓
   // Supabase
   //
-  // 瀏覽器不再直接呼叫建立訂單 RPC。
+  // 瀏覽器不直接呼叫建立訂單 RPC。
+  //
+  // ★ 重要：
+  // Browser 不再提供 total 作為價格權威。
+  // Browser 只提供：
+  //   - 商品 ID
+  //   - 商品數量
+  //   - couponCode
+  //
+  // Server 會重新查詢商品價格與優惠券，
+  // 並由 Server 計算最終金額。
   // ===================================================
 
   async function addOrder(
@@ -932,6 +963,29 @@ export function OrderProvider({
         );
 
       // -----------------------------------------------
+      // 優惠券代碼
+      //
+      // ★ 只傳 couponCode
+      // ★ 不傳 total
+      //
+      // Server API 會：
+      // 1. 查商品實際價格
+      // 2. 查優惠券
+      // 3. 驗證優惠券
+      // 4. 計算折扣
+      // 5. 計算最終金額
+      // -----------------------------------------------
+
+      const couponCode =
+        newOrder.couponCode
+          ? String(
+              newOrder.couponCode
+            )
+              .trim()
+              .toUpperCase()
+          : null;
+
+      // -----------------------------------------------
       // 呼叫 Server API
       //
       // Browser
@@ -942,7 +996,7 @@ export function OrderProvider({
       //   ↓
       // SUPABASE_SECRET_KEY
       //   ↓
-      // create_order_and_decrease_stock
+      // create_order_and_decrease_stock_with_total
       // -----------------------------------------------
 
       const response =
@@ -982,6 +1036,20 @@ export function OrderProvider({
                   newOrder.paymentMethod ||
                     "貨到付款"
                 ).trim(),
+
+              // ★ 只把優惠券代碼交給 Server
+              couponCode,
+
+              // ★ 不傳 total
+              //
+              // Server 才是金額權威。
+              //
+              // Server 會根據：
+              // 商品 DB 價格
+              // +
+              // couponCode
+              // ↓
+              // 計算真正 total
 
               items:
                 rpcItems,
@@ -1069,9 +1137,15 @@ export function OrderProvider({
 
               total:
                 Number(
-                  data.order.total ||
+                  data.order.total ??
+                    data.pricing?.total ??
                     0
                 ),
+
+              couponCode:
+                data.pricing?.couponCode ||
+                couponCode ||
+                undefined,
 
               totalQuantity:
                 Number(
@@ -1096,6 +1170,19 @@ export function OrderProvider({
 
               id:
                 orderId,
+
+              // Server 回傳才是實際金額
+              total:
+                Number(
+                  data.pricing?.total ??
+                    newOrder.total ??
+                    0
+                ),
+
+              couponCode:
+                data.pricing?.couponCode ||
+                couponCode ||
+                undefined,
 
               status:
                 "待付款",

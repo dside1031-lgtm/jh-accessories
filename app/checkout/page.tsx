@@ -35,7 +35,6 @@ export default function CheckoutPage() {
 
   const {
     validateCoupon,
-    increaseCouponUsage,
   } = useCoupon();
 
   // =====================================================
@@ -282,7 +281,8 @@ export default function CheckoutPage() {
   // =====================================================
 
   async function startEcpayPayment(
-    order: any
+    order: any,
+    serverTotal: number
   ) {
     try {
       // -------------------------------------------------
@@ -316,7 +316,7 @@ export default function CheckoutPage() {
           },
           body: JSON.stringify({
             orderId: order.id,
-            amount: Math.round(order.total),
+            amount: Math.round(serverTotal),
             itemName,
           }),
         }
@@ -350,26 +350,6 @@ export default function CheckoutPage() {
         throw new Error(
           "綠界付款資料不完整。"
         );
-      }
-
-      // -------------------------------------------------
-      // 優惠券使用次數
-      //
-      // ECPay 付款資料已成功建立後，
-      // 才增加優惠券使用次數。
-      // -------------------------------------------------
-
-      if (appliedCoupon) {
-        try {
-          await increaseCouponUsage(
-            appliedCoupon.id
-          );
-        } catch (couponError) {
-          console.error(
-            "更新優惠券使用次數失敗：",
-            couponError
-          );
-        }
       }
 
       // -------------------------------------------------
@@ -590,12 +570,18 @@ export default function CheckoutPage() {
           orderItems,
 
         // -------------------------------------------------
-        // 重要：
-        // 訂單實際金額使用折扣後金額
+        // 注意：
+        // total 仍保留給前端 UI 顯示與型別相容。
+        // 真正寫入資料庫的金額由 /api/orders
+        // 重新查商品價格並重新計算優惠券後決定。
         // -------------------------------------------------
 
         total:
           orderTotal,
+
+        couponCode:
+          currentCoupon?.code ||
+         undefined,
 
         totalQuantity,
 
@@ -644,23 +630,6 @@ export default function CheckoutPage() {
         paymentMethod ===
         "貨到付款"
       ) {
-        // -------------------------------------------------
-        // 訂單建立成功後才增加使用次數
-        // -------------------------------------------------
-
-        if (currentCoupon) {
-          try {
-            await increaseCouponUsage(
-              currentCoupon.id
-            );
-          } catch (couponError) {
-            console.error(
-              "更新優惠券使用次數失敗：",
-              couponError
-            );
-          }
-        }
-
         clearCart();
 
         router.push(
@@ -680,8 +649,22 @@ export default function CheckoutPage() {
         paymentMethod ===
         "綠界信用卡"
       ) {
+        const serverTotal = Number(
+          result.order?.total ??0
+        );
+
+        if (!Number.isFinite(serverTotal) || serverTotal <= 0) {
+          throw new Error(
+            "後端回傳的訂單金額無效，無法建立綠界付款。"
+          );
+        }
+
         await startEcpayPayment(
-          order
+          {
+            ...order,
+            total: serverTotal,
+          },
+          serverTotal
         );
 
         return;

@@ -210,22 +210,17 @@ export function ProductProvider({
 
     async function loadProducts() {
       try {
-        console.log(
-          "正在從 Supabase 載入商品..."
-        );
+        console.log("正在從 Supabase 載入商品...");
 
-        const {
-          data,
-          error,
-        } = await supabase
-          .from("products")
-          .select("*")
-          .order(
-            "created_at",
-            {
-              ascending: false,
-            }
-          );
+console.log(
+  "瀏覽器 Supabase URL：",
+  process.env.NEXT_PUBLIC_SUPABASE_URL
+);
+
+const { data, error } = await supabase
+  .from("products")
+  .select("*")
+  .order("created_at", { ascending: false });
 
         if (error) {
           console.error(
